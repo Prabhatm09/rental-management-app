@@ -74,7 +74,7 @@ export default async function PropertiesPage() {
           </thead>
 
           <tbody>
-            {properties.map((property) => (
+            {properties.map((property:any) => (
               <tr
                 key={property.id}
                 className="border-b border-white/5"
