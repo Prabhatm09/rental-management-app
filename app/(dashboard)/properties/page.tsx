@@ -4,6 +4,15 @@ import {
   getProperties,
 } from "@/actions/property";
 
+type Property = {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  pinCode?: string | null;
+};
+
 export default async function PropertiesPage() {
   const properties = await getProperties();
 
@@ -74,7 +83,7 @@ export default async function PropertiesPage() {
           </thead>
 
           <tbody>
-            {properties.map((property:any) => (
+            {properties.map((property: Property) => (
               <tr
                 key={property.id}
                 className="border-b border-white/5"
