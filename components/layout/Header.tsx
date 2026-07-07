@@ -1,13 +1,12 @@
 export default function Header() {
   return (
-    <header className="rounded-3xl border border-white/20 bg-white/10 p-6 m-2 backdrop-blur-xl">
-      <h2 className="text-2xl font-semibold">
-        Welcome 👋
-      </h2>
-
-      <p className="mt-2 text-gray-300">
-        Rental Management System
-      </p>
+    <header className="flex h-20 items-center justify-between border-b border-white/10 bg-white/5 px-8 backdrop-blur-xl">
+      <div>
+        <h2 className="text-2xl font-bold">Rental Management</h2>
+        <p className="text-sm text-white/60">
+          Manage Properties, Tenants & Bills
+        </p>
+      </div>
     </header>
   );
 }

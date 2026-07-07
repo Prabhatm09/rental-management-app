@@ -1,30 +1,36 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const menus = [
-  { title: "Dashboard", href: "/dashboard" },
-  { title: "Properties", href: "/properties" },
-  { title: "Rental Units", href: "/rental-units" },
-  { title: "Tenants", href: "/tenants" },
-  { title: "Agreements", href: "/agreements" },
-  { title: "Bills", href: "/bills" },
-  { title: "Payments", href: "/payments" },
+  { name: "Dashboard", href: "/dashboard" },
+  { name: "Properties", href: "/properties" },
+  { name: "Tenants", href: "/tenants" },
+  { name: "Bills", href: "/bills" },
 ];
 
 export default function Sidebar() {
-  return (
-    <aside className="glass w-52 p-6 flex flex-col m-2">
-      <h1 className="text-3xl font-bold mb-10">
-        Rental ERP
-      </h1>
+  const pathname = usePathname();
 
-      <nav className="space-y-2">
+  return (
+    <aside className="flex h-screen w-64 flex-col border-r border-white/10 bg-white/5 backdrop-blur-xl">
+      <div className="border-b border-white/10 p-6">
+        <h1 className="text-2xl font-bold">🏠 RentalMS</h1>
+      </div>
+
+      <nav className="flex-1 space-y-2 p-4">
         {menus.map((menu) => (
           <Link
             key={menu.href}
             href={menu.href}
-            className="rounded-xl px-4 py-3 hover:bg-white/10 transition block"
+            className={`block rounded-xl px-4 py-3 transition ${
+              pathname === menu.href
+                ? "bg-indigo-600 text-white"
+                : "text-white/70 hover:bg-white/10 hover:text-white"
+            }`}
           >
-            {menu.title}
+            {menu.name}
           </Link>
         ))}
       </nav>

@@ -1,11 +1,9 @@
 import { InputHTMLAttributes } from "react";
 
-interface Props extends InputHTMLAttributes<HTMLInputElement> {}
-
 export default function GlassInput({
   className = "",
   ...props
-}: Props) {
+}: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
@@ -13,15 +11,16 @@ export default function GlassInput({
         w-full
         rounded-xl
         border
-        border-white/20
-        bg-white/10
+        border-white/10
+        bg-white/5
         px-4
         py-3
         text-white
-        placeholder:text-gray-300
         outline-none
-        backdrop-blur-md
-        focus:border-blue-400
+        placeholder:text-white/40
+        focus:border-indigo-500
+        focus:ring-2
+        focus:ring-indigo-500/30
         ${className}
       `}
     />

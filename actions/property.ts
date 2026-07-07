@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 export async function getProperties() {
-  return prisma.property.findMany({
+  return await prisma.property.findMany({
     orderBy: {
       createdAt: "desc",
     },
@@ -12,31 +12,41 @@ export async function getProperties() {
 }
 
 export async function createProperty(formData: FormData) {
-  const name = formData.get("name") as string;
-  const address = formData.get("address") as string;
-  const city = formData.get("city") as string;
-  const state = formData.get("state") as string;
-  const pinCode = formData.get("pinCode") as string;
+  const name = formData.get("name")?.toString().trim();
+  const address = formData.get("address")?.toString().trim();
 
-  if (!name) return;
+  if (!name) {
+    throw new Error("Property name is required.");
+  }
 
   await prisma.property.create({
     data: {
       name,
       address,
-      city,
-      state,
-      pinCode,
     },
   });
 
-  revalidatePath("/properties");
+  revalidatePath("/dashboard/properties");
 }
 
 export async function deleteProperty(id: string) {
-  await prisma.property.delete({
-    where: { id },
+  const tenantCount = await prisma.tenant.count({
+    where: {
+      propertyId: id,
+    },
   });
 
-  revalidatePath("/properties");
+  if (tenantCount > 0) {
+    throw new Error(
+      "Cannot delete property. Remove tenants first."
+    );
+  }
+
+  await prisma.property.delete({
+    where: {
+      id,
+    },
+  });
+
+  revalidatePath("/dashboard/properties");
 }

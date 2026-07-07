@@ -7,306 +7,58 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//
-// ENUMS
-//
-
-enum UnitType {
-  ROOM
-  PORTION
-  FLOOR
-  SHOP
-  OFFICE
-}
-
-enum MeterType {
-  ELECTRICITY
-  WATER
-}
-
-enum MeterStatus {
-  ACTIVE
-  INACTIVE
-}
-
-enum RentalStatus {
-  ACTIVE
-  COMPLETED
-  TERMINATED
-}
-
-enum ChargeType {
-  RENT
-  ELECTRICITY
-  WATER
-  MAINTENANCE
-  PARKING
-  OTHER
-}
-
-enum ChargeMethod {
-  FIXED
-  PER_UNIT
-  CUSTOM
-}
-
-enum BillStatus {
-  DRAFT
-  GENERATED
-  PAID
-  PARTIAL
-  OVERDUE
-}
-
-enum PaymentMethod {
-  CASH
-  UPI
-  BANK_TRANSFER
-}
-
-//
-// PROPERTY
-//
-
 model Property {
-  id      String  @id @default(cuid())
-  name    String
-  address String?
-  city    String?
-  state   String?
-  pinCode String?
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+
+  tenants   Tenant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  units  RentalUnit[]
-  meters Meter[]
 }
-
-//
-// RENTAL UNIT
-//
-
-model RentalUnit {
-  id         String   @id @default(cuid())
-  name       String
-  unitNumber String
-  floor      Int
-  type       UnitType
-
-  propertyId String
-  property   Property @relation(fields: [propertyId], references: [id])
-
-  assignments MeterAssignment[]
-  rentals     RentalAgreement[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([propertyId, unitNumber])
-}
-
-//
-// METER
-//
-
-model Meter {
-  id          String      @id @default(cuid())
-  meterNumber String
-  type        MeterType
-  status      MeterStatus @default(ACTIVE)
-
-  propertyId String
-  property   Property @relation(fields: [propertyId], references: [id])
-
-  assignments MeterAssignment[]
-  readings    MeterReading[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([propertyId, meterNumber])
-}
-
-//
-// METER ASSIGNMENT
-//
-
-model MeterAssignment {
-  id String @id @default(cuid())
-
-  meterId String
-  meter   Meter  @relation(fields: [meterId], references: [id])
-
-  rentalUnitId String
-  rentalUnit   RentalUnit @relation(fields: [rentalUnitId], references: [id])
-
-  createdAt DateTime @default(now())
-
-  @@unique([meterId, rentalUnitId])
-}
-
-//
-// TENANT
-//
 
 model Tenant {
-  id String @id @default(cuid())
+  id          String   @id @default(cuid())
 
-  fullName String
+  name        String
+  phone       String?
 
-  phone String
+  startMonth  DateTime
+  endMonth    DateTime?
 
-  email String?
+  monthlyRent Float
 
-  governmentId String?
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id])
 
-  address String?
+  bills       Bill[]
 
-  emergencyContact String?
-
-  createdAt DateTime @default(now())
-
-  rentals RentalAgreement[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
-
-//
-// RENTAL AGREEMENT
-//
-
-model RentalAgreement {
-  id String @id @default(cuid())
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  rentalUnitId String
-  rentalUnit   RentalUnit @relation(fields: [rentalUnitId], references: [id])
-
-  securityDeposit Float
-
-  startDate DateTime
-
-  endDate DateTime?
-
-  status RentalStatus @default(ACTIVE)
-
-  charges AgreementCharge[]
-
-  bills Bill[]
-
-  createdAt DateTime @default(now())
-
-  updatedAt DateTime @updatedAt
-}
-
-//
-// AGREEMENT CHARGES
-//
-
-model AgreementCharge {
-  id String @id @default(cuid())
-
-  rentalAgreementId String
-  rentalAgreement   RentalAgreement @relation(fields: [rentalAgreementId], references: [id])
-
-  chargeType ChargeType
-
-  calculation ChargeMethod
-
-  amount Float
-
-  createdAt DateTime @default(now())
-}
-
-//
-// MONTHLY METER READING
-//
-
-model MeterReading {
-  id String @id @default(cuid())
-
-  meterId String
-  meter   Meter  @relation(fields: [meterId], references: [id])
-
-  readingDate DateTime
-
-  previousReading Float
-
-  currentReading Float
-
-  unitsConsumed Float
-
-  createdAt DateTime @default(now())
-
-  @@unique([meterId, readingDate])
-}
-
-//
-// BILL
-//
 
 model Bill {
   id String @id @default(cuid())
 
-  rentalAgreementId String
-  rentalAgreement   RentalAgreement @relation(fields: [rentalAgreementId], references: [id])
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  billingMonth DateTime
+  month DateTime
 
-  totalAmount Float
+  rent Float
 
-  status BillStatus @default(DRAFT)
+  electricPrevious Float
+  electricCurrent Float
 
-  items BillItem[]
+  motorPrevious Float
+  motorCurrent Float
 
-  payments Payment[]
+  electricRate Float
+  motorRate Float
+
+  total Float
 
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
-
-  @@unique([rentalAgreementId, billingMonth])
-}
-
-//
-// BILL ITEM
-//
-
-model BillItem {
-  id String @id @default(cuid())
-
-  billId String
-  bill   Bill   @relation(fields: [billId], references: [id])
-
-  description String
-
-  quantity Float
-
-  rate Float
-
-  amount Float
-}
-
-//
-// PAYMENT
-//
-
-model Payment {
-  id String @id @default(cuid())
-
-  billId String
-  bill   Bill   @relation(fields: [billId], references: [id])
-
-  amount Float
-
-  paymentDate DateTime
-
-  method PaymentMethod
-
-  referenceNo String?
-
-  notes String?
-
-  createdAt DateTime @default(now())
 }

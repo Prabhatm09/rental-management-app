@@ -10,7 +10,17 @@ export default function GlassCard({
   className = "",
 }: Props) {
   return (
-    <div className={`glass p-6 shadow-2xl ${className}`}>
+    <div
+      className={`
+        rounded-3xl
+        border border-white/10
+        bg-white/5
+        p-6
+        backdrop-blur-xl
+        shadow-xl
+        ${className}
+      `}
+    >
       {children}
     </div>
   );

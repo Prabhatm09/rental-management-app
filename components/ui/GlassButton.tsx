@@ -1,18 +1,25 @@
 import { ButtonHTMLAttributes } from "react";
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {}
-
 export default function GlassButton({
-  children,
   className = "",
   ...props
-}: Props) {
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}
-      className={`primary-btn hover:scale-105 active:scale-95 ${className}`}
-    >
-      {children}
-    </button>
+      className={`
+        rounded-xl
+        bg-indigo-600
+        px-5
+        py-3
+        font-semibold
+        text-white
+        transition-all
+        hover:bg-indigo-700
+        hover:scale-[1.02]
+        active:scale-95
+        ${className}
+      `}
+    />
   );
 }
