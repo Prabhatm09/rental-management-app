@@ -1,26 +1,23 @@
 import {
-  getPropertyOptions,
+  getRentalUnitOptions,
   getTenants,
 } from "@/actions/tenant";
+import { connection } from "next/server";
 
-import TenantForm from "@/components/tenant/TenantForm";
-import TenantTable from "@/components/tenant/TenantTable";
+import TenantSection from "@/components/tenant/TenantSection";
 
 export default async function TenantsPage() {
-  const properties = await getPropertyOptions();
+  await connection();
+
   const tenants = await getTenants();
 
+  const rentalUnits =
+    await getRentalUnitOptions();
+
   return (
-    <div className="space-y-8">
-      <div className="mx-auto max-w-xl">
-        <h1 className="mb-8 text-4xl font-bold">
-          Tenants
-        </h1>
-
-        <TenantForm properties={properties} />
-      </div>
-
-      <TenantTable tenants={tenants} />
-    </div>
+    <TenantSection
+      tenants={tenants}
+      rentalUnits={rentalUnits}
+    />
   );
 }

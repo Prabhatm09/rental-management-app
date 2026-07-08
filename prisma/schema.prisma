@@ -11,38 +11,56 @@ model Property {
   id        String   @id @default(cuid())
   name      String
   address   String?
+  motorInitialReading Float @default(0)
+  motorChargePerUnit  Float @default(8)
+  createdAt DateTime @default(now())
 
-  tenants   Tenant[]
+  units RentalUnit[]
+}
+
+model RentalUnit {
+  id         String   @id @default(cuid())
+  name       String
+
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+
+  tenants Tenant[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 model Tenant {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  name        String
-  phone       String?
+  name  String
+  phone String?
 
-  startMonth  DateTime
-  endMonth    DateTime?
+  rentalUnitId String
+  rentalUnit   RentalUnit @relation(fields: [rentalUnitId], references: [id])
+
+  startMonth DateTime
+
+  isActive Boolean @default(true)
 
   monthlyRent Float
 
-  propertyId  String
-  property    Property @relation(fields: [propertyId], references: [id])
+  initialElectricReading Float
+  initialMotorReading     Float @default(0)
 
-  bills       Bill[]
+  electricChargePerUnit Float
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  bills Bill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Bill {
   id String @id @default(cuid())
 
   tenantId String
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   month DateTime
 
@@ -50,15 +68,47 @@ model Bill {
 
   electricPrevious Float
   electricCurrent Float
+  electricUnits Float
 
   motorPrevious Float
   motorCurrent Float
+  motorUnits Float
+  motorTotalUnits Float @default(0)
+  motorShareUnits Float @default(0)
+  motorShareTenantCount Int @default(1)
 
-  electricRate Float
+  electricChargePerUnit Float
+  electricAmount Float @default(0)
+
   motorRate Float
+  motorAmount Float @default(0)
+
+  adjustmentAmount Float @default(0)
 
   total Float
+  paidAmount Float @default(0)
+  dueAmount Float @default(0)
+  status String @default("UNPAID")
+  shareMessage String?
+
+  payments Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, month])
+}
+
+model Payment {
+  id String @id @default(cuid())
+
+  billId String
+  bill   Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  amount Float
+  method String?
+  note   String?
+  paidAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
 }
