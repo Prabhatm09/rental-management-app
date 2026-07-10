@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
+import { calculateBill } from "@/lib/calculateBill";
 
 export type BillActionState = {
   ok: boolean;
@@ -22,6 +23,7 @@ const PAYMENT_STATUSES = {
 
 function revalidateBillingViews() {
   revalidatePath("/bills");
+  revalidatePath("/payments");
   revalidatePath("/dashboard");
   revalidatePath("/tenants");
   revalidatePath("/properties");
@@ -63,6 +65,8 @@ function buildShareMessage(input: {
   electricUnits: number;
   electricChargePerUnit: number;
   electricAmount: number;
+  electricAdjustmentAmount: number;
+  finalElectricAmount: number;
   motorPrevious: number;
   motorCurrent: number;
   motorTotalUnits: number;
@@ -70,6 +74,8 @@ function buildShareMessage(input: {
   motorShareTenantCount: number;
   motorRate: number;
   motorAmount: number;
+  motorAdjustmentAmount: number;
+  finalMotorAmount: number;
   adjustmentAmount: number;
   total: number;
   paidAmount: number;
@@ -79,6 +85,10 @@ function buildShareMessage(input: {
   const adjustmentLine =
     input.adjustmentAmount !== 0
       ? `Adjustment: Rs ${formatAmount(input.adjustmentAmount)}\n`
+      : "";
+  const motorAdjustmentLine =
+    input.motorAdjustmentAmount !== 0
+      ? `Motor adjustment: Rs ${formatAmount(input.motorAdjustmentAmount)}\nFinal motor: Rs ${formatAmount(input.finalMotorAmount)}\n`
       : "";
 
   return `${input.tenantName} bill for ${formatMonth(input.month)}
@@ -90,6 +100,7 @@ Electric: ${input.electricCurrent} - ${input.electricPrevious} = ${formatAmount(
 
 Motor: ${input.motorCurrent} - ${input.motorPrevious} = ${formatAmount(input.motorTotalUnits)} units
 Share: ${formatAmount(input.motorTotalUnits)} / ${input.motorShareTenantCount} tenants = ${formatAmount(input.motorShareUnits)} units x Rs ${formatAmount(input.motorRate)}/unit = Rs ${formatAmount(input.motorAmount)}
+${motorAdjustmentLine}
 
 ${adjustmentLine}Total amount = Rs ${formatAmount(input.total)}
 Paid = Rs ${formatAmount(input.paidAmount)}
@@ -133,6 +144,10 @@ async function updateBillPaymentSummary(billId: string) {
     electricUnits: bill.electricUnits,
     electricChargePerUnit: bill.electricChargePerUnit,
     electricAmount: bill.electricAmount,
+    electricAdjustmentAmount:
+      bill.electricAdjustmentAmount,
+    finalElectricAmount:
+      bill.finalElectricAmount || bill.electricAmount,
     motorPrevious: bill.motorPrevious,
     motorCurrent: bill.motorCurrent,
     motorTotalUnits: bill.motorTotalUnits,
@@ -140,6 +155,9 @@ async function updateBillPaymentSummary(billId: string) {
     motorShareTenantCount: bill.motorShareTenantCount,
     motorRate: bill.motorRate,
     motorAmount: bill.motorAmount,
+    motorAdjustmentAmount: bill.motorAdjustmentAmount,
+    finalMotorAmount:
+      bill.finalMotorAmount || bill.motorAmount,
     adjustmentAmount: bill.adjustmentAmount,
     total: bill.total,
     paidAmount,
@@ -188,6 +206,11 @@ export async function getTenants() {
   return prisma.tenant.findMany({
     where: {
       isActive: true,
+      rentalUnit: {
+        property: {
+          isArchived: false,
+        },
+      },
     },
     include: {
       rentalUnit: {
@@ -262,7 +285,7 @@ export async function createBillAction(
   const alreadyExists = await prisma.bill.findFirst({
     where: {
       tenantId,
-      month,
+      month: billMonthStart,
     },
   });
 
@@ -273,17 +296,22 @@ export async function createBillAction(
     };
   }
 
-  const electricCurrent = getNumber(formData, "electricCurrent");
-  const motorCurrent = getNumber(formData, "motorCurrent");
-  const adjustmentAmount = getNumber(
+  const electricCurrent = getNumber(
     formData,
-    "adjustmentAmount"
+    "electricCurrent"
   );
+  const electricAdjustmentAmount = 0;
+  const motorAdjustmentAmount = getNumber(
+    formData,
+    "motorAdjustmentAmount"
+  );
+  const otherAdjustmentAmount = 0;
 
   if (
-    [electricCurrent, motorCurrent, adjustmentAmount].some(
-      (value) => Number.isNaN(value)
-    )
+    [
+      electricCurrent,
+      motorAdjustmentAmount,
+    ].some((value) => Number.isNaN(value))
   ) {
     return {
       ok: false,
@@ -303,21 +331,29 @@ export async function createBillAction(
     },
   });
 
-  const previousMotorBill = await prisma.bill.findFirst({
-    where: {
-      month: {
-        lt: month,
-      },
-      tenant: {
-        rentalUnit: {
+  const propertyReading =
+    await prisma.propertyMonthlyReading.findUnique({
+      where: {
+        propertyId_month: {
           propertyId: tenant.rentalUnit.propertyId,
+          month: billMonthStart,
         },
       },
-    },
-    orderBy: {
-      month: "desc",
+    });
+
+  const motorParticipantCount = await prisma.tenant.count({
+    where: {
+      isActive: true,
+      rentalUnit: {
+        propertyId: tenant.rentalUnit.propertyId,
+        participatesInMotor: true,
+      },
     },
   });
+  const motorShareTenantCount = Math.max(
+    1,
+    motorParticipantCount
+  );
 
   const activeTenantsInProperty = await prisma.tenant.count({
     where: {
@@ -339,8 +375,10 @@ export async function createBillAction(
     previousElectricBill?.electricCurrent ??
     tenant.initialElectricReading;
   const motorPrevious =
-    previousMotorBill?.motorCurrent ??
+    propertyReading?.motorPreviousReading ??
     tenant.rentalUnit.property.motorInitialReading;
+  const motorCurrent =
+    propertyReading?.motorCurrentReading ?? motorPrevious;
 
   if (electricCurrent < electricPrevious) {
     return {
@@ -350,46 +388,97 @@ export async function createBillAction(
     };
   }
 
-  if (motorCurrent < motorPrevious) {
-    return {
-      ok: false,
-      message:
-        "Current motor reading cannot be lower than previous motor reading.",
-    };
+  if (motorAdjustmentAmount !== 0) {
+    const [existingMotorAdjustments, generatedMotorBills] =
+      await Promise.all([
+        prisma.bill.aggregate({
+          _sum: {
+            motorAdjustmentAmount: true,
+          },
+          where: {
+            month: billMonthStart,
+            tenant: {
+              rentalUnit: {
+                propertyId: tenant.rentalUnit.propertyId,
+              },
+            },
+          },
+        }),
+        prisma.bill.count({
+          where: {
+            month: billMonthStart,
+            tenant: {
+              rentalUnit: {
+                propertyId: tenant.rentalUnit.propertyId,
+              },
+            },
+          },
+        }),
+      ]);
+    const projectedAdjustment =
+      (existingMotorAdjustments._sum.motorAdjustmentAmount ??
+        0) + motorAdjustmentAmount;
+
+    if (
+      generatedMotorBills + 1 >= activeTenantsInProperty &&
+      Math.abs(projectedAdjustment) > 0.001
+    ) {
+      return {
+        ok: false,
+        message:
+          "Total motor adjustment for this property and month must equal zero.",
+      };
+    }
   }
 
   const rent = tenant.monthlyRent;
-  const electricUnits = electricCurrent - electricPrevious;
-  const electricAmount =
-    electricUnits * tenant.electricChargePerUnit;
-  const motorTotalUnits = motorCurrent - motorPrevious;
-  const motorShareUnits =
-    motorTotalUnits / activeTenantsInProperty;
   const motorRate =
     tenant.rentalUnit.property.motorChargePerUnit;
-  const motorAmount = motorShareUnits * motorRate;
-  const total =
-    rent + electricAmount + motorAmount + adjustmentAmount;
+  const billCalculation = calculateBill({
+    rent,
+    electricPrevious,
+    electricCurrent,
+    electricRate: tenant.electricChargePerUnit,
+    electricAdjustmentAmount,
+    motorPrevious,
+    motorCurrent,
+    motorRate,
+    motorParticipantCount: motorShareTenantCount,
+    participatesInMotor:
+      tenant.rentalUnit.participatesInMotor,
+    motorAdjustmentAmount,
+    otherAdjustmentAmount,
+  });
+  const adjustmentAmount =
+    billCalculation.otherAdjustmentAmount;
+  const total = billCalculation.total;
   const paidAmount = 0;
   const dueAmount = total;
   const status = PAYMENT_STATUSES.UNPAID;
 
   const shareMessage = buildShareMessage({
     tenantName: tenant.name,
-    month,
+    month: billMonthStart,
     rent,
     electricPrevious,
     electricCurrent,
-    electricUnits,
+    electricUnits: billCalculation.electricUnits,
     electricChargePerUnit: tenant.electricChargePerUnit,
-    electricAmount,
+    electricAmount:
+      billCalculation.calculatedElectricAmount,
+    electricAdjustmentAmount,
+    finalElectricAmount:
+      billCalculation.finalElectricAmount,
     motorPrevious,
     motorCurrent,
-    motorTotalUnits,
-    motorShareUnits,
-    motorShareTenantCount: activeTenantsInProperty,
+    motorTotalUnits: billCalculation.motorTotalUnits,
+    motorShareUnits: billCalculation.motorShareUnits,
+    motorShareTenantCount,
     motorRate,
-    motorAmount,
+    motorAmount:
+      billCalculation.calculatedMotorAmount,
+    motorAdjustmentAmount,
+    finalMotorAmount: billCalculation.finalMotorAmount,
     adjustmentAmount,
     total,
     paidAmount,
@@ -400,22 +489,35 @@ export async function createBillAction(
   await prisma.bill.create({
     data: {
       tenantId,
-      month,
+      propertyReadingId: propertyReading?.id,
+      month: billMonthStart,
       rent,
       electricPrevious,
       electricCurrent,
-      electricUnits,
+      electricUnits: billCalculation.electricUnits,
       electricChargePerUnit: tenant.electricChargePerUnit,
-      electricAmount,
+      electricAmount:
+        billCalculation.calculatedElectricAmount,
+      calculatedElectricAmount:
+        billCalculation.calculatedElectricAmount,
+      electricAdjustmentAmount,
+      finalElectricAmount:
+        billCalculation.finalElectricAmount,
       motorPrevious,
       motorCurrent,
-      motorUnits: motorShareUnits,
-      motorTotalUnits,
-      motorShareUnits,
-      motorShareTenantCount: activeTenantsInProperty,
+      motorUnits: billCalculation.motorShareUnits,
+      motorTotalUnits: billCalculation.motorTotalUnits,
+      motorShareUnits: billCalculation.motorShareUnits,
+      motorShareTenantCount,
       motorRate,
-      motorAmount,
+      motorAmount:
+        billCalculation.calculatedMotorAmount,
+      calculatedMotorAmount:
+        billCalculation.calculatedMotorAmount,
+      motorAdjustmentAmount,
+      finalMotorAmount: billCalculation.finalMotorAmount,
       adjustmentAmount,
+      otherAdjustmentAmount,
       total,
       paidAmount,
       dueAmount,
@@ -436,6 +538,9 @@ export async function createPayment(formData: FormData) {
   const billId = String(formData.get("billId") ?? "");
   const amount = getNumber(formData, "amount");
   const method = formData.get("method")?.toString() || null;
+  const transactionReference =
+    formData.get("transactionReference")?.toString().trim() ||
+    null;
   const note = formData.get("note")?.toString().trim() || null;
   const paidAtValue = formData.get("paidAt")?.toString();
   const paidAt = paidAtValue ? new Date(paidAtValue) : new Date();
@@ -471,12 +576,232 @@ export async function createPayment(formData: FormData) {
       billId,
       amount,
       method,
+      transactionReference,
       note,
       paidAt,
     },
   });
 
   await updateBillPaymentSummary(billId);
+
+  revalidateBillingViews();
+}
+
+export async function getPayments(filters?: {
+  method?: string;
+  from?: Date;
+  to?: Date;
+}) {
+  return prisma.payment.findMany({
+    where: {
+      method:
+        filters?.method && filters.method !== "ALL"
+          ? filters.method
+          : undefined,
+      paidAt:
+        filters?.from || filters?.to
+          ? {
+              gte: filters.from,
+              lte: filters.to,
+            }
+          : undefined,
+    },
+    include: {
+      bill: {
+        include: {
+          tenant: {
+            include: {
+              rentalUnit: {
+                include: {
+                  property: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      paidAt: "desc",
+    },
+  });
+}
+
+export async function getPropertyReadingOptions() {
+  return prisma.property.findMany({
+    where: {
+      isArchived: false,
+    },
+    include: {
+      readings: {
+        orderBy: {
+          month: "desc",
+        },
+        take: 6,
+      },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+}
+
+export async function getPropertyReadings() {
+  return prisma.propertyMonthlyReading.findMany({
+    include: {
+      property: true,
+      bills: {
+        select: {
+          electricUnits: true,
+          motorAdjustmentAmount: true,
+          tenant: {
+            select: {
+              rentalUnit: {
+                select: {
+                  participatesInMotor: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      month: "desc",
+    },
+    take: 12,
+  });
+}
+
+export async function upsertPropertyMonthlyReading(
+  formData: FormData
+) {
+  const id = formData.get("id")?.toString();
+  const propertyId =
+    formData.get("propertyId")?.toString() || "";
+  const monthValue = formData.get("month")?.toString() || "";
+  const monthDate = new Date(monthValue);
+  const month = Number.isNaN(monthDate.getTime())
+    ? null
+    : new Date(
+        monthDate.getFullYear(),
+        monthDate.getMonth(),
+        1
+      );
+  const governmentPreviousReading = getNumber(
+    formData,
+    "governmentPreviousReading"
+  );
+  const governmentCurrentReading = getNumber(
+    formData,
+    "governmentCurrentReading"
+  );
+  const motorPreviousReading = getNumber(
+    formData,
+    "motorPreviousReading"
+  );
+  const motorCurrentReading = getNumber(
+    formData,
+    "motorCurrentReading"
+  );
+  const governmentBillAmount = getNumber(
+    formData,
+    "governmentBillAmount"
+  );
+  const governmentOutstanding = getNumber(
+    formData,
+    "governmentOutstanding"
+  );
+
+  if (!propertyId || !month) {
+    throw new Error("Property and month are required.");
+  }
+
+  const numbers = [
+    governmentPreviousReading,
+    governmentCurrentReading,
+    motorPreviousReading,
+    motorCurrentReading,
+    governmentBillAmount,
+    governmentOutstanding,
+  ];
+
+  if (numbers.some((value) => Number.isNaN(value))) {
+    throw new Error("Enter valid meter readings and amounts.");
+  }
+
+  if (
+    governmentCurrentReading < governmentPreviousReading ||
+    motorCurrentReading < motorPreviousReading
+  ) {
+    throw new Error("Current reading cannot be lower than previous reading.");
+  }
+
+  if (
+    governmentBillAmount < 0 ||
+    governmentOutstanding < 0
+  ) {
+    throw new Error("Government bill and outstanding cannot be negative.");
+  }
+
+  const governmentUnits =
+    governmentCurrentReading - governmentPreviousReading;
+  const motorUnits =
+    motorCurrentReading - motorPreviousReading;
+
+  const duplicate =
+    await prisma.propertyMonthlyReading.findFirst({
+      where: {
+        id: id
+          ? {
+              not: id,
+            }
+          : undefined,
+        propertyId,
+        month,
+      },
+    });
+
+  if (duplicate) {
+    throw new Error(
+      "This property already has a reading for the selected month."
+    );
+  }
+
+  if (id) {
+    await prisma.propertyMonthlyReading.update({
+      where: {
+        id,
+      },
+      data: {
+        propertyId,
+        month,
+        governmentPreviousReading,
+        governmentCurrentReading,
+        governmentUnits,
+        motorPreviousReading,
+        motorCurrentReading,
+        motorUnits,
+        governmentBillAmount,
+        governmentOutstanding,
+      },
+    });
+  } else {
+    await prisma.propertyMonthlyReading.create({
+      data: {
+        propertyId,
+        month,
+        governmentPreviousReading,
+        governmentCurrentReading,
+        governmentUnits,
+        motorPreviousReading,
+        motorCurrentReading,
+        motorUnits,
+        governmentBillAmount,
+        governmentOutstanding,
+      },
+    });
+  }
 
   revalidateBillingViews();
 }

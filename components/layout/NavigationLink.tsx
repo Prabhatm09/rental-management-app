@@ -29,8 +29,8 @@ export default function NavigationLink({
   return (
     <>
       {pending && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/20 backdrop-blur-sm">
-          <div className="border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250)] px-5 py-4 text-sm font-bold text-slate-950 shadow-2xl">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/25 backdrop-blur-sm">
+          <div className="electric-loader">
             Loading page...
           </div>
         </div>
@@ -49,12 +49,12 @@ export default function NavigationLink({
         }}
         className={`group flex items-center transition ${
           compact
-            ? "min-h-14 flex-col justify-center gap-1 rounded-[18px] px-1 py-2 text-[11px] font-bold"
-            : "gap-3 rounded-[18px] px-4 py-3 text-sm font-bold"
+            ? "min-h-12 flex-col justify-center gap-1 rounded-[14px] px-1 py-2 text-[10px] font-bold"
+            : "gap-3 rounded-[12px] px-3 py-2.5 text-sm font-bold"
         } ${
           active
-            ? "bg-[#2563EB] text-white shadow-[6px_6px_0_#F7C948]"
-            : "text-slate-600 hover:bg-[oklch(94%_0.055_250)] hover:text-[#2563EB]"
+            ? "electric-primary text-white"
+            : "text-[var(--muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--accent)]"
         } ${
           pending
             ? "pointer-events-none cursor-not-allowed opacity-60"

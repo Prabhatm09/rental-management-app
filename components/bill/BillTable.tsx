@@ -13,6 +13,7 @@ type Payment = {
   id: string;
   amount: number;
   method: string | null;
+  transactionReference: string | null;
   note: string | null;
   paidAt: Date;
 };
@@ -26,6 +27,9 @@ type Bill = {
   electricUnits: number;
   electricChargePerUnit: number;
   electricAmount: number;
+  calculatedElectricAmount: number;
+  electricAdjustmentAmount: number;
+  finalElectricAmount: number;
   motorPrevious: number;
   motorCurrent: number;
   motorTotalUnits: number;
@@ -33,7 +37,11 @@ type Bill = {
   motorShareTenantCount: number;
   motorRate: number;
   motorAmount: number;
+  calculatedMotorAmount: number;
+  motorAdjustmentAmount: number;
+  finalMotorAmount: number;
   adjustmentAmount: number;
+  otherAdjustmentAmount: number;
   total: number;
   paidAmount: number;
   dueAmount: number;
@@ -90,6 +98,10 @@ function previousMonth(value: Date) {
     date.getMonth() - 1,
     1
   );
+}
+
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function statusClass(status: string) {
@@ -172,7 +184,7 @@ export default function BillTable({ bills }: Props) {
 
   if (bills.length === 0) {
     return (
-      <div className="rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.9)] p-8 text-center font-medium text-slate-500 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]">
+      <div className="electric-panel rounded-[28px] p-8 text-center font-medium text-[var(--muted)]">
         No bills found.
       </div>
     );
@@ -180,9 +192,9 @@ export default function BillTable({ bills }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="overflow-x-auto rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.9)] shadow-[0_18px_48px_oklch(38%_0.12_252/10%)] backdrop-blur-xl">
+      <div className="electric-panel overflow-x-auto rounded-[28px]">
         <table className="min-w-[760px] w-full">
-          <thead className="border-b border-[oklch(88%_0.04_247)] text-sm text-slate-500">
+          <thead className="border-b border-[var(--line)] text-sm text-[var(--muted)]">
             <tr>
               <th className="p-4 text-left">Tenant</th>
               <th className="p-4 text-left">Month</th>
@@ -200,23 +212,23 @@ export default function BillTable({ bills }: Props) {
                 onClick={() => setSelectedBillId(bill.id)}
                 className={`cursor-pointer border-b border-[oklch(92%_0.035_247)] transition last:border-0 ${
                   selectedBillId === bill.id
-                    ? "bg-[oklch(94%_0.055_250)]"
-                    : "hover:bg-[oklch(96%_0.035_250)]"
+                    ? "bg-[var(--surface-soft)]"
+                    : "hover:bg-[var(--surface-soft)]"
                 }`}
               >
-                <td className="p-4 font-medium text-slate-900">
+                <td className="p-4 font-medium text-[var(--ink)]">
                   {bill.tenant.name}
                 </td>
-                <td className="p-4 text-slate-600">
+                <td className="p-4 text-[var(--muted)]">
                   {formatMonth(bill.month)}
                 </td>
-                <td className="p-4 text-right text-slate-700">
+                <td className="p-4 text-right text-[var(--ink)]">
                   ₹ {formatAmount(bill.total)}
                 </td>
                 <td className="p-4 text-right text-green-700">
                   ₹ {formatAmount(bill.paidAmount)}
                 </td>
-                <td className="p-4 text-right font-semibold text-blue-700">
+                <td className="p-4 text-right font-semibold text-[var(--accent)]">
                   ₹ {formatAmount(bill.dueAmount)}
                 </td>
                 <td className="p-4 text-right">
@@ -231,7 +243,7 @@ export default function BillTable({ bills }: Props) {
                 <td className="p-4 text-right">
                   <button
                     type="button"
-                    className="rounded-full border border-[oklch(80%_0.08_252)] bg-[oklch(99%_0.006_250)] px-3 py-1 text-xs font-semibold text-blue-700 hover:border-blue-500"
+                    className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-1 text-xs font-semibold text-[var(--accent)] hover:border-[var(--accent)]"
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedBillId(bill.id);
@@ -247,7 +259,7 @@ export default function BillTable({ bills }: Props) {
       </div>
 
       {!selectedBill && (
-        <div className="rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.72)] p-8 text-center text-slate-500 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)] backdrop-blur-xl">
+        <div className="electric-panel rounded-[28px] p-8 text-center text-[var(--muted)]">
           Select a tenant bill from the table to view payment, reading details, and share message.
         </div>
       )}
@@ -255,14 +267,14 @@ export default function BillTable({ bills }: Props) {
       {selectedBill && (
         <article
           key={selectedBill.id}
-          className="rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.9)] p-4 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)] backdrop-blur-xl md:p-5"
+          className="electric-panel rounded-[28px] p-4 md:p-5"
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-black text-slate-950">
+              <h2 className="text-xl font-black text-[var(--ink)]">
                 {selectedBill.tenant.name}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-[var(--muted)]">
                 {selectedBill.tenant.rentalUnit.property.name} ·{" "}
                 {selectedBill.tenant.rentalUnit.name} · Rent:{" "}
                 {formatLongMonth(selectedBill.month)} · Electricity:{" "}
@@ -280,35 +292,52 @@ export default function BillTable({ bills }: Props) {
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(94%_0.055_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Rent
               </p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="mt-1 font-semibold text-[var(--ink)]">
                 ₹ {formatAmount(selectedBill.rent)}
               </p>
             </div>
 
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(94%_0.055_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Electric
               </p>
-              <p className="mt-1 text-sm text-slate-700">
+              <p className="mt-1 text-sm text-[var(--muted)]">
                 {formatAmount(selectedBill.electricCurrent)} -{" "}
                 {formatAmount(selectedBill.electricPrevious)} ={" "}
                 {formatAmount(selectedBill.electricUnits)} units x ₹
                 {formatAmount(selectedBill.electricChargePerUnit)}
               </p>
-              <p className="font-semibold text-slate-900">
-                ₹ {formatAmount(selectedBill.electricAmount)}
+              <p className="font-semibold text-[var(--ink)]">
+                ₹{" "}
+                {formatAmount(
+                  selectedBill.finalElectricAmount ||
+                    selectedBill.electricAmount
+                )}
               </p>
+              {selectedBill.electricAdjustmentAmount !== 0 && (
+                <p className="text-xs text-[var(--muted)]">
+                  Calc ₹
+                  {formatAmount(
+                    selectedBill.calculatedElectricAmount ||
+                      selectedBill.electricAmount
+                  )}{" "}
+                  · Adj ₹
+                  {formatAmount(
+                    selectedBill.electricAdjustmentAmount
+                  )}
+                </p>
+              )}
             </div>
 
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(94%_0.055_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Motor
               </p>
-              <p className="mt-1 text-sm text-slate-700">
+              <p className="mt-1 text-sm text-[var(--muted)]">
                 {formatAmount(selectedBill.motorCurrent)} -{" "}
                 {formatAmount(selectedBill.motorPrevious)} ={" "}
                 {formatAmount(selectedBill.motorTotalUnits)} total units,
@@ -316,33 +345,54 @@ export default function BillTable({ bills }: Props) {
                 {selectedBill.motorShareTenantCount} tenants =
                 share {formatAmount(selectedBill.motorShareUnits)} units
               </p>
-              <p className="font-semibold text-slate-900">
-                ₹ {formatAmount(selectedBill.motorAmount)}
+              <p className="font-semibold text-[var(--ink)]">
+                ₹{" "}
+                {formatAmount(
+                  selectedBill.finalMotorAmount ||
+                    selectedBill.motorAmount
+                )}
               </p>
+              {selectedBill.motorAdjustmentAmount !== 0 && (
+                <p className="text-xs text-[var(--muted)]">
+                  Calc ₹
+                  {formatAmount(
+                    selectedBill.calculatedMotorAmount ||
+                      selectedBill.motorAmount
+                  )}{" "}
+                  · Adj ₹
+                  {formatAmount(
+                    selectedBill.motorAdjustmentAmount
+                  )}
+                </p>
+              )}
             </div>
 
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(94%_0.055_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Adjustment
               </p>
-              <p className="mt-1 font-semibold text-slate-900">
-                ₹ {formatAmount(selectedBill.adjustmentAmount)}
+              <p className="mt-1 font-semibold text-[var(--ink)]">
+                ₹{" "}
+                {formatAmount(
+                  selectedBill.otherAdjustmentAmount ||
+                    selectedBill.adjustmentAmount
+                )}
               </p>
             </div>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Total
               </p>
-              <p className="mt-1 text-lg font-bold text-slate-900">
+              <p className="mt-1 text-lg font-bold text-[var(--ink)]">
                 ₹ {formatAmount(selectedBill.total)}
               </p>
             </div>
 
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Paid
               </p>
               <p className="mt-1 text-lg font-bold text-green-700">
@@ -350,19 +400,19 @@ export default function BillTable({ bills }: Props) {
               </p>
             </div>
 
-            <div className="rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.72)] p-4">
-              <p className="text-xs font-medium text-slate-500">
+            <div className="electric-subpanel rounded-[18px] p-4">
+              <p className="text-xs font-medium text-[var(--muted)]">
                 Due
               </p>
-              <p className="mt-1 text-lg font-bold text-blue-600">
+              <p className="mt-1 text-lg font-bold text-[var(--accent)]">
                 ₹ {formatAmount(selectedBill.dueAmount)}
               </p>
             </div>
           </div>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(320px,0.9fr)_minmax(360px,1.2fr)]">
-            <div className="rounded-[22px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.72)] p-4">
-              <h3 className="font-semibold text-slate-900">
+            <div className="electric-subpanel rounded-[22px] p-4">
+              <h3 className="font-semibold text-[var(--ink)]">
                 Record Payment
               </h3>
 
@@ -387,14 +437,15 @@ export default function BillTable({ bills }: Props) {
                     name="amount"
                     min="1"
                     max={selectedBill.dueAmount}
+                    defaultValue={selectedBill.dueAmount}
                     placeholder="Amount"
-                    className="min-h-12 w-full rounded-[16px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250)] px-4 py-3 text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-[oklch(82%_0.12_252/45%)]"
+                    className="electric-input px-4 py-3"
                     required
                   />
 
                   <select
                     name="method"
-                    className="min-h-12 w-full rounded-[16px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250)] px-4 py-3 text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-[oklch(82%_0.12_252/45%)]"
+                    className="electric-input px-4 py-3"
                     defaultValue=""
                   >
                     <option value="">Method</option>
@@ -411,13 +462,20 @@ export default function BillTable({ bills }: Props) {
                   <input
                     type="date"
                     name="paidAt"
-                    className="min-h-12 w-full rounded-[16px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250)] px-4 py-3 text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-[oklch(82%_0.12_252/45%)]"
+                    defaultValue={todayInputValue()}
+                    className="electric-input px-4 py-3"
                   />
 
                   <input
                     name="note"
                     placeholder="Note"
-                    className="min-h-12 w-full rounded-[16px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250)] px-4 py-3 text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-[oklch(82%_0.12_252/45%)]"
+                    className="electric-input px-4 py-3"
+                  />
+
+                  <input
+                    name="transactionReference"
+                    placeholder="Transaction reference"
+                    className="electric-input px-4 py-3"
                   />
 
                   <PendingSubmitButton
@@ -430,11 +488,11 @@ export default function BillTable({ bills }: Props) {
               )}
 
               {selectedBill.payments.length > 0 && (
-                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
                   {selectedBill.payments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-blue-50/80 px-3 py-2"
+                      className="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-strong)] px-3 py-2"
                     >
                       <span>
                         ₹ {formatAmount(payment.amount)} ·{" "}
@@ -442,6 +500,9 @@ export default function BillTable({ bills }: Props) {
                         {new Date(payment.paidAt).toLocaleDateString(
                           "en-IN"
                         )}
+                        {payment.transactionReference
+                          ? ` · ${payment.transactionReference}`
+                          : ""}
                       </span>
                       <form
                         action={deletePayment}
@@ -460,12 +521,12 @@ export default function BillTable({ bills }: Props) {
                           name="paymentId"
                           value={payment.id}
                         />
-                        <PendingSubmitButton
-                          className="bg-transparent px-0 py-0 text-xs text-red-600 hover:bg-transparent hover:text-red-700"
-                          pendingText="Deleting..."
+                        <button
+                          type="submit"
+                          className="rounded-lg px-2 py-1 text-xs font-semibold text-[var(--danger)] hover:bg-red-500/10"
                         >
                           Delete
-                        </PendingSubmitButton>
+                        </button>
                       </form>
                     </div>
                   ))}
@@ -473,16 +534,16 @@ export default function BillTable({ bills }: Props) {
               )}
             </div>
 
-            <div className="rounded-[22px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.72)] p-4">
+            <div className="electric-subpanel rounded-[22px] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="font-semibold text-slate-900">
+                <h3 className="font-semibold text-[var(--ink)]">
                   Share Message
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => copyMessage(selectedBill.id)}
-                    className="rounded-[14px] border border-[oklch(80%_0.08_252)] bg-[oklch(99%_0.006_250)] px-3 py-2 text-sm font-semibold text-blue-700 hover:border-blue-500"
+                    className="rounded-[14px] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm font-semibold text-[var(--accent)] hover:border-[var(--accent)]"
                   >
                     {copiedBillId === selectedBill.id
                       ? "Copied"
@@ -497,7 +558,7 @@ export default function BillTable({ bills }: Props) {
                         selectedBill.tenant.phone
                       )
                     }
-                    className="rounded-[14px] bg-[#2563EB] px-3 py-2 text-sm font-semibold text-white shadow-[4px_4px_0_#F7C948] hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="electric-primary rounded-[14px] px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Send WhatsApp
                   </button>
@@ -522,7 +583,7 @@ export default function BillTable({ bills }: Props) {
                     [selectedBill.id]: event.target.value,
                   }))
                 }
-                className="mt-4 min-h-64 w-full rounded-[18px] border border-[oklch(88%_0.04_247)] bg-[oklch(94%_0.055_250/0.5)] p-4 text-sm leading-6 text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-[oklch(82%_0.12_252/45%)]"
+                className="electric-input mt-4 min-h-64 p-4 text-sm leading-6"
               />
             </div>
           </div>
@@ -545,12 +606,12 @@ export default function BillTable({ bills }: Props) {
               name="id"
               value={selectedBill.id}
             />
-            <PendingSubmitButton
-              className="bg-transparent px-0 py-0 text-sm text-red-600 hover:bg-transparent hover:text-red-700"
-              pendingText="Deleting..."
+            <button
+              type="submit"
+              className="electric-danger min-h-11 rounded-[14px] px-4 py-2 text-sm font-semibold"
             >
               Delete Bill
-            </PendingSubmitButton>
+            </button>
           </form>
         </article>
       )}

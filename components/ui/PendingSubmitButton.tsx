@@ -22,22 +22,18 @@ export default function PendingSubmitButton({
       aria-disabled={pending}
       className={`
         min-h-12
-        rounded-[16px]
-        bg-[#2563EB]
+        rounded-[12px]
+        electric-primary
         px-5
-        py-3
+        py-2.5
         font-semibold
-        text-white
-        shadow-[5px_5px_0_#F7C948]
         transition duration-200
-        hover:bg-blue-700
         active:translate-x-0.5
         active:translate-y-0.5
-        active:shadow-[2px_2px_0_#F7C948]
         focus-visible:outline
         focus-visible:outline-2
         focus-visible:outline-offset-2
-        focus-visible:outline-[#2563EB]
+        focus-visible:outline-[var(--accent)]
         disabled:pointer-events-none
         disabled:cursor-not-allowed
         disabled:opacity-60

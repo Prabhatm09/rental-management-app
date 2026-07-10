@@ -20,6 +20,7 @@ type Tenant = {
   initialMotorReading: number;
   rentalUnit: {
     name: string;
+    participatesInMotor: boolean;
     property: {
       id: string;
       name: string;
@@ -64,14 +65,18 @@ export default function BillForm({
   const [month, setMonth] = useState("");
   const [electricPrevious, setElectricPrevious] =
     useState(0);
-  const [motorPrevious, setMotorPrevious] =
-    useState(0);
   const [electricCurrent, setElectricCurrent] =
     useState(0);
+  const [motorPrevious, setMotorPrevious] =
+    useState(0);
   const [motorCurrent, setMotorCurrent] =
-    useState(0);
-  const [adjustmentAmount, setAdjustmentAmount] =
-    useState(0);
+    useState<number | null>(null);
+  const [motorParticipantCount, setMotorParticipantCount] =
+    useState(1);
+  const [hasPropertyReading, setHasPropertyReading] =
+    useState(false);
+  const [motorAdjustmentInput, setMotorAdjustmentInput] =
+    useState("0");
 
   const tenant = tenants.find(
     (item) => item.id === tenantId
@@ -82,15 +87,8 @@ export default function BillForm({
     tenant?.electricChargePerUnit ?? 0;
   const motorChargePerUnit =
     property?.motorChargePerUnit ?? 8;
-  const activeTenantsInProperty = property
-    ? Math.max(
-        1,
-        tenants.filter(
-          (item) =>
-            item.rentalUnit.property.id === property.id
-        ).length
-      )
-    : 1;
+  const participatesInMotor =
+    tenant?.rentalUnit.participatesInMotor ?? true;
 
   useEffect(() => {
     if (!state.ok) return;
@@ -99,10 +97,12 @@ export default function BillForm({
       setTenantId("");
       setMonth("");
       setElectricPrevious(0);
-      setMotorPrevious(0);
       setElectricCurrent(0);
-      setMotorCurrent(0);
-      setAdjustmentAmount(0);
+      setMotorPrevious(0);
+      setMotorCurrent(null);
+      setMotorParticipantCount(1);
+      setHasPropertyReading(false);
+      setMotorAdjustmentInput("0");
       onSuccess?.();
     }, 0);
 
@@ -126,6 +126,11 @@ export default function BillForm({
         previous.electricPrevious
       );
       setMotorPrevious(previous.motorPrevious);
+      setMotorCurrent(previous.motorCurrent);
+      setMotorParticipantCount(
+        Math.max(1, previous.motorParticipantCount)
+      );
+      setHasPropertyReading(previous.hasPropertyReading);
     }
 
     loadPreviousReading();
@@ -139,21 +144,30 @@ export default function BillForm({
     0,
     electricCurrent - electricPrevious
   );
-  const electricAmount =
+  const calculatedElectricAmount =
     electricUnits * electricChargePerUnit;
-  const motorTotalUnits = Math.max(
-    0,
-    motorCurrent - motorPrevious
-  );
-  const motorShareUnits =
-    motorTotalUnits / activeTenantsInProperty;
-  const motorAmount =
+  const finalElectricAmount = calculatedElectricAmount;
+  const motorTotalUnits =
+    motorCurrent === null
+      ? 0
+      : Math.max(0, motorCurrent - motorPrevious);
+  const motorShareUnits = participatesInMotor
+    ? motorTotalUnits / motorParticipantCount
+    : 0;
+  const calculatedMotorAmount =
     motorShareUnits * motorChargePerUnit;
+  const parsedMotorAdjustment = Number(motorAdjustmentInput);
+  const motorAdjustmentAmount = Number.isFinite(
+    parsedMotorAdjustment
+  )
+    ? parsedMotorAdjustment
+    : 0;
+  const finalMotorAmount =
+    calculatedMotorAmount + motorAdjustmentAmount;
   const grandTotal =
     monthlyRent +
-    electricAmount +
-    motorAmount +
-    adjustmentAmount;
+    finalElectricAmount +
+    finalMotorAmount;
 
   return (
     <form
@@ -162,7 +176,7 @@ export default function BillForm({
     >
       {pending && (
         <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-blue-950/20 backdrop-blur-sm">
-          <div className="rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-medium text-slate-900 shadow-lg">
+          <div className="electric-loader">
             Generating bill...
           </div>
         </div>
@@ -179,16 +193,15 @@ export default function BillForm({
           onChange={(event) => {
             setTenantId(event.target.value);
             setElectricPrevious(0);
-            setMotorPrevious(0);
             setElectricCurrent(0);
-            setMotorCurrent(0);
-            setAdjustmentAmount(0);
+            setMotorPrevious(0);
+            setMotorCurrent(null);
+            setHasPropertyReading(false);
+            setMotorAdjustmentInput("0");
           }}
-          className="w-full rounded-xl border border-blue-100 bg-white p-3 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className="electric-input px-4 py-3"
         >
-          <option value="">
-            Select Tenant
-          </option>
+          <option value="">Select Tenant</option>
 
           {tenants.map((tenantOption) => (
             <option
@@ -200,61 +213,10 @@ export default function BillForm({
           ))}
         </select>
 
-        {tenant && property && (
-          <div className="space-y-2 rounded-2xl border border-blue-100 bg-white p-5">
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">
-                Property
-              </span>
-              <span className="text-right font-medium text-slate-900">
-                {property.name}
-              </span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">
-                Rental Unit
-              </span>
-              <span className="text-right font-medium text-slate-900">
-                {tenant.rentalUnit.name}
-              </span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">
-                Monthly Rent
-              </span>
-              <span className="text-right font-medium text-slate-900">
-                ₹ {formatAmount(tenant.monthlyRent)}
-              </span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">
-                Electric Charge / Unit
-              </span>
-              <span className="text-right font-medium text-slate-900">
-                ₹ {formatAmount(tenant.electricChargePerUnit)}/Unit
-              </span>
-            </div>
-
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">
-                Motor Charge / Unit
-              </span>
-              <span className="text-right font-medium text-slate-900">
-                ₹ {formatAmount(property.motorChargePerUnit)}/Unit split between{" "}
-                {activeTenantsInProperty} tenant
-                {activeTenantsInProperty === 1 ? "" : "s"}
-              </span>
-            </div>
-          </div>
-        )}
-
         <div className="space-y-2">
           <label
             htmlFor="month"
-            className="text-sm font-medium text-slate-600"
+            className="text-sm font-medium text-[var(--muted)]"
           >
             Monthly Bill
           </label>
@@ -267,14 +229,53 @@ export default function BillForm({
               setMonth(event.target.value);
               setElectricPrevious(0);
               setMotorPrevious(0);
+              setMotorCurrent(null);
+              setHasPropertyReading(false);
             }}
             required
           />
         </div>
 
+        {tenant && property && (
+          <div className="electric-subpanel space-y-3 rounded-[20px] p-4">
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--muted)]">
+                Property
+              </span>
+              <span className="text-right font-medium text-[var(--ink)]">
+                {property.name}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--muted)]">
+                Rental Unit
+              </span>
+              <span className="text-right font-medium text-[var(--ink)]">
+                {tenant.rentalUnit.name}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--muted)]">
+                Motor Sharing
+              </span>
+              <span className="text-right font-medium text-[var(--ink)]">
+                {participatesInMotor
+                  ? `${motorParticipantCount} participating unit${motorParticipantCount === 1 ? "" : "s"}`
+                  : "Not participating"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {month && tenantId && !hasPropertyReading && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            No monthly motor reading found. Motor calculation will start at ₹0, and you can still use Motor Adjustment for custom sharing.
+          </p>
+        )}
+
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-600">
+            <label className="text-sm font-medium text-[var(--muted)]">
               Previous Electric Reading
             </label>
             <GlassInput
@@ -284,7 +285,7 @@ export default function BillForm({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-600">
+            <label className="text-sm font-medium text-[var(--muted)]">
               Current Electric Reading
             </label>
             <GlassInput
@@ -301,107 +302,78 @@ export default function BillForm({
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-600">
-              Previous Motor Reading
-            </label>
-            <GlassInput
-              value={motorPrevious}
-              readOnly
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-600">
-              Current Motor Reading
-            </label>
-            <GlassInput
-              type="number"
-              name="motorCurrent"
-              value={numberValue(motorCurrent)}
-              onChange={(event) =>
-                setMotorCurrent(
-                  Number(event.target.value)
-                )
-              }
-              required
-            />
-          </div>
-        </div>
-
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-600">
-            Adjustment Amount
+          <label className="text-sm font-medium text-[var(--muted)]">
+            Motor Adjustment
           </label>
           <GlassInput
-            type="number"
-            name="adjustmentAmount"
-            value={
-              adjustmentAmount === 0
-                ? "0"
-                : String(adjustmentAmount)
-            }
+            type="text"
+            inputMode="decimal"
+            name="motorAdjustmentAmount"
+            value={motorAdjustmentInput}
             onChange={(event) =>
-              setAdjustmentAmount(
-                Number(event.target.value)
-              )
+              setMotorAdjustmentInput(event.target.value)
             }
+            placeholder="+80 or -80"
           />
-          <p className="text-sm text-slate-500">
-            Use adjustment for custom sharing, deduction, discount, or extra contribution. Example: Tenant A +400, Tenant B -400.
+          <p className="text-sm text-[var(--muted)]">
+            {motorAdjustmentAmount < 0
+              ? `This reduces this tenant's motor bill by ₹${formatAmount(Math.abs(motorAdjustmentAmount))}. Add +${formatAmount(Math.abs(motorAdjustmentAmount))} to another tenant in the same property/month.`
+              : motorAdjustmentAmount > 0
+                ? `This adds ₹${formatAmount(motorAdjustmentAmount)} to this tenant's motor bill. Use -${formatAmount(motorAdjustmentAmount)} on another tenant to balance it.`
+                : "Enter a signed amount like -80 to reduce this tenant's motor bill or +80 to add it here."}
           </p>
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-blue-100 bg-white p-5">
+        <div className="electric-subpanel space-y-4 rounded-[20px] p-4">
           <div className="flex justify-between gap-4">
-            <span className="text-slate-500">
+            <span className="text-[var(--muted)]">
               Monthly Rent
             </span>
-            <span className="text-right font-semibold text-slate-900">
+            <span className="text-right font-semibold text-[var(--ink)]">
               ₹ {formatAmount(monthlyRent)}
             </span>
           </div>
 
           <div className="space-y-1">
-            <p className="font-medium text-slate-900">Electric</p>
-            <p className="text-slate-600">
+              <p className="font-medium text-[var(--ink)]">
+              Electric
+            </p>
+            <p className="text-sm text-[var(--muted)]">
               {formatAmount(electricUnits)} Units x ₹
-              {formatAmount(electricChargePerUnit)}/Unit = ₹{" "}
-              {formatAmount(electricAmount)}
+              {formatAmount(electricChargePerUnit)} = ₹{" "}
+              {formatAmount(calculatedElectricAmount)}
+            </p>
+            <p className="text-sm font-semibold text-[var(--ink)]">
+              Amount: ₹ {formatAmount(finalElectricAmount)}
             </p>
           </div>
 
           <div className="space-y-1">
-            <p className="font-medium text-slate-900">Motor</p>
-            <p className="text-slate-600">
+            <p className="font-medium text-[var(--ink)]">Motor</p>
+            <p className="text-sm text-[var(--muted)]">
               {formatAmount(motorTotalUnits)} Units /{" "}
-              {activeTenantsInProperty} tenant
-              {activeTenantsInProperty === 1 ? "" : "s"} ={" "}
+              {motorParticipantCount} ={" "}
               {formatAmount(motorShareUnits)} Units x ₹
-              {formatAmount(motorChargePerUnit)}/Unit = ₹{" "}
-              {formatAmount(motorAmount)}
+              {formatAmount(motorChargePerUnit)}
             </p>
+            <p className="text-sm font-semibold text-[var(--ink)]">
+              Final: ₹ {formatAmount(finalMotorAmount)}
+            </p>
+            {motorAdjustmentAmount !== 0 && (
+              <p className="text-sm text-[var(--muted)]">
+                Calculated ₹{formatAmount(calculatedMotorAmount)} · Adjustment ₹{formatAmount(motorAdjustmentAmount)}
+              </p>
+            )}
           </div>
 
-          {adjustmentAmount !== 0 && (
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">
-                Adjustment
-              </span>
-              <span className="text-right font-semibold text-slate-900">
-                ₹ {formatAmount(adjustmentAmount)}
-              </span>
-            </div>
-          )}
-
-          <hr className="border-blue-100" />
+          <hr className="border-[var(--line)]" />
 
           <div className="flex justify-between gap-4">
-            <span className="text-xl font-bold text-slate-900">
+            <span className="text-xl font-bold text-[var(--ink)]">
               Grand Total
             </span>
-            <span className="text-xl font-bold text-blue-600">
+            <span className="text-xl font-bold text-[var(--accent)]">
               ₹ {formatAmount(grandTotal)}
             </span>
           </div>
@@ -416,7 +388,7 @@ export default function BillForm({
           </p>
         )}
 
-        <div className="flex gap-3">
+        <div className="sticky bottom-0 -mx-5 flex gap-3 border-t border-[var(--line)] bg-[var(--surface)] px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
           <PendingSubmitButton
             className="flex-1"
             pendingText="Generating..."
@@ -429,7 +401,7 @@ export default function BillForm({
               type="button"
               onClick={onCancel}
               disabled={pending}
-              className="rounded-xl border border-blue-100 px-6 text-slate-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-12 rounded-[16px] border border-[var(--line)] px-5 font-semibold text-[var(--ink)] transition hover:bg-[var(--surface-soft)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
             </button>

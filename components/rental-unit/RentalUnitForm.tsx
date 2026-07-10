@@ -1,6 +1,11 @@
 "use client";
 
-import { createRentalUnit } from "@/actions/rentalUnit";
+import { useRef, useState } from "react";
+
+import {
+  createRentalUnit,
+  updateRentalUnit,
+} from "@/actions/rentalUnit";
 import GlassButton from "@/components/ui/GlassButton";
 import GlassInput from "@/components/ui/GlassInput";
 
@@ -9,22 +14,82 @@ type Property = {
   name: string;
 };
 
+type RentalUnit = {
+  id: string;
+  name: string;
+  propertyId: string;
+  participatesInMotor: boolean;
+};
+
 interface Props {
   properties: Property[];
+  rentalUnit?: RentalUnit;
+  onSuccess?: () => void;
+  onCancel?: () => void;
 }
 
-export default function RentalUnitForm({ properties }: Props) {
+export default function RentalUnitForm({
+  properties,
+  rentalUnit,
+  onSuccess,
+  onCancel,
+}: Props) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const isEditing = Boolean(rentalUnit);
+
+  async function action(formData: FormData) {
+    setError("");
+    setPending(true);
+
+    try {
+      if (isEditing) {
+        await updateRentalUnit(formData);
+      } else {
+        await createRentalUnit(formData);
+      }
+
+      formRef.current?.reset();
+      onSuccess?.();
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to save rental unit."
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <div className="rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.9)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)] backdrop-blur-xl sm:p-6">
-      <form action={createRentalUnit} className="space-y-5">
+    <form
+      ref={formRef}
+      action={action}
+      className="relative space-y-5"
+    >
+      {rentalUnit && (
+        <input
+          type="hidden"
+          name="id"
+          value={rentalUnit.id}
+        />
+      )}
+
+      <fieldset
+        disabled={pending}
+        className="space-y-5 disabled:pointer-events-none disabled:opacity-60"
+      >
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-600">
+          <label className="text-sm font-medium text-[var(--muted)]">
             Property
           </label>
           <select
             name="propertyId"
             required
-            className="w-full rounded-xl border border-blue-100 bg-white p-3 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+            defaultValue={rentalUnit?.propertyId ?? ""}
+            className="min-h-12 w-full rounded-[16px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-[var(--ink)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-glow)]"
           >
             <option value="">Select Property</option>
 
@@ -32,7 +97,6 @@ export default function RentalUnitForm({ properties }: Props) {
               <option
                 key={property.id}
                 value={property.id}
-                className="bg-white"
               >
                 {property.name}
               </option>
@@ -41,24 +105,70 @@ export default function RentalUnitForm({ properties }: Props) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-600">
-            Unit Name
+          <label className="text-sm font-medium text-[var(--muted)]">
+            Unit Number / Name
           </label>
           <GlassInput
             name="name"
+            defaultValue={rentalUnit?.name ?? ""}
             placeholder="Ground Floor, Room 1, Shop 2..."
             required
           />
         </div>
 
-        <GlassButton
-          type="submit"
-          className="w-full"
-        >
-          Add Rental Unit
-        </GlassButton>
+        <label className="flex min-h-12 items-center justify-between gap-4 rounded-[16px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+          <span>
+            <span className="block text-sm font-semibold text-[var(--ink)]">
+              Participates In Motor
+            </span>
+            <span className="text-xs text-[var(--muted)]">
+              Turn off for units that should not receive motor charges.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            name="participatesInMotor"
+            defaultChecked={
+              rentalUnit?.participatesInMotor ?? true
+            }
+            className="size-5 accent-[var(--accent)]"
+          />
+        </label>
 
-      </form>
-    </div>
+        {error && (
+          <p
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {error}
+          </p>
+        )}
+
+        <div className="sticky bottom-0 -mx-5 flex gap-3 border-t border-[var(--line)] bg-[var(--surface)] px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+          <GlassButton
+            type="submit"
+            className="flex-1"
+            disabled={pending}
+          >
+            {pending
+              ? "Saving..."
+              : isEditing
+                ? "Save Changes"
+                : "Add Rental Unit"}
+          </GlassButton>
+
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={pending}
+              className="min-h-12 rounded-[16px] border border-[var(--line)] px-5 font-semibold text-[var(--ink)] hover:bg-[var(--surface-soft)]"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </fieldset>
+    </form>
   );
 }

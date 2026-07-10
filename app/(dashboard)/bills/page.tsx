@@ -1,5 +1,7 @@
 import {
   getBills,
+  getPropertyReadingOptions,
+  getPropertyReadings,
   getTenants,
 } from "@/actions/bill";
 import { connection } from "next/server";
@@ -10,12 +12,21 @@ import BillTable from "@/components/bill/BillTable";
 export default async function BillsPage() {
   await connection();
 
-  const tenants = await getTenants();
-  const bills = await getBills();
+  const [tenants, bills, properties, readings] =
+    await Promise.all([
+      getTenants(),
+      getBills(),
+      getPropertyReadingOptions(),
+      getPropertyReadings(),
+    ]);
 
   return (
     <div className="space-y-8">
-      <BillSection tenants={tenants} />
+      <BillSection
+        tenants={tenants}
+        properties={properties}
+        readings={readings}
+      />
 
       <BillTable bills={bills} />
     </div>

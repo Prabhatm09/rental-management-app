@@ -33,19 +33,29 @@ export async function getPreviousReading(
     },
   });
 
-  const previousMotorBill = await prisma.bill.findFirst({
-    where: {
-      month: {
-        lt: month,
-      },
-      tenant: {
-        rentalUnit: {
+  const billMonthStart = new Date(
+    month.getFullYear(),
+    month.getMonth(),
+    1
+  );
+
+  const propertyReading =
+    await prisma.propertyMonthlyReading.findUnique({
+      where: {
+        propertyId_month: {
           propertyId: tenant.rentalUnit.propertyId,
+          month: billMonthStart,
         },
       },
-    },
-    orderBy: {
-      month: "desc",
+    });
+
+  const participantCount = await prisma.tenant.count({
+    where: {
+      isActive: true,
+      rentalUnit: {
+        propertyId: tenant.rentalUnit.propertyId,
+        participatesInMotor: true,
+      },
     },
   });
 
@@ -54,7 +64,13 @@ export async function getPreviousReading(
       previousElectricBill?.electricCurrent ??
       tenant.initialElectricReading,
     motorPrevious:
-      previousMotorBill?.motorCurrent ??
+      propertyReading?.motorPreviousReading ??
       tenant.rentalUnit.property.motorInitialReading,
+    motorCurrent: propertyReading?.motorCurrentReading ?? null,
+    motorUnits: propertyReading?.motorUnits ?? null,
+    motorParticipantCount: participantCount,
+    participatesInMotor:
+      tenant.rentalUnit.participatesInMotor,
+    hasPropertyReading: Boolean(propertyReading),
   };
 }

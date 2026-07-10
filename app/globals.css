@@ -1,16 +1,43 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --bauhaus-ink: oklch(18% 0.035 250);
-  --bauhaus-muted: oklch(45% 0.045 250);
-  --bauhaus-line: oklch(88% 0.04 247);
-  --bauhaus-paper: oklch(98% 0.012 250);
-  --bauhaus-surface: oklch(99% 0.006 250);
-  --bauhaus-blue: oklch(55% 0.22 260);
-  --bauhaus-blue-soft: oklch(94% 0.055 250);
-  --bauhaus-red: oklch(60% 0.22 27);
-  --bauhaus-yellow: oklch(86% 0.17 88);
-  --bauhaus-shadow: 0 18px 48px oklch(38% 0.12 252 / 10%);
+  --ink: oklch(20% 0.035 255);
+  --muted: oklch(49% 0.035 252);
+  --line: oklch(87% 0.025 248);
+  --paper: oklch(97% 0.008 250);
+  --surface: oklch(99% 0.004 250 / 0.96);
+  --surface-strong: oklch(100% 0.003 250);
+  --surface-soft: oklch(95% 0.012 250 / 0.9);
+  --accent: oklch(62% 0.17 220);
+  --accent-strong: oklch(52% 0.18 232);
+  --accent-glow: oklch(72% 0.16 220 / 0.22);
+  --charge: oklch(79% 0.16 88);
+  --danger: oklch(56% 0.2 25);
+  --success: oklch(55% 0.15 155);
+  --warning: oklch(70% 0.15 70);
+  --app-shadow: 0 14px 36px oklch(33% 0.07 250 / 10%);
+  --app-shadow-soft: 0 1px 2px oklch(30% 0.04 250 / 8%);
+}
+
+.dark {
+  --ink: oklch(94% 0.012 250);
+  --muted: oklch(70% 0.028 250);
+  --line: oklch(32% 0.035 252);
+  --paper: oklch(15% 0.026 256);
+  --surface: oklch(20% 0.028 256 / 0.96);
+  --surface-strong: oklch(23% 0.03 256);
+  --surface-soft: oklch(27% 0.034 256 / 0.88);
+  --accent: oklch(74% 0.15 215);
+  --accent-strong: oklch(68% 0.17 222);
+  --accent-glow: oklch(73% 0.16 215 / 0.24);
+  --charge: oklch(83% 0.17 96);
+  --danger: oklch(70% 0.17 24);
+  --success: oklch(73% 0.14 155);
+  --warning: oklch(78% 0.15 74);
+  --app-shadow: 0 18px 44px oklch(7% 0.02 250 / 40%);
+  --app-shadow-soft: 0 1px 2px oklch(4% 0.02 250 / 42%);
 }
 
 html,
@@ -19,21 +46,27 @@ body {
   height: 100%;
 }
 
+.dark body {
+  background:
+    radial-gradient(circle at 84% -8%, var(--accent-glow), transparent 30rem),
+    linear-gradient(180deg, var(--paper), oklch(12% 0.024 258));
+}
+
 body {
   margin: 0;
   padding: 0;
 
   min-height: 100vh;
 
-  color: var(--bauhaus-ink);
+  color: var(--ink);
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    "Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
 
   background:
-    linear-gradient(90deg, oklch(91% 0.06 250 / 55%) 1px, transparent 1px),
-    linear-gradient(180deg, oklch(91% 0.06 250 / 45%) 1px, transparent 1px),
-    linear-gradient(135deg, oklch(99% 0.006 250) 0 58%, oklch(94% 0.055 250) 58% 100%);
-  background-size: 32px 32px, 32px 32px, auto;
+    radial-gradient(circle at 84% -8%, var(--accent-glow), transparent 30rem),
+    linear-gradient(180deg, var(--paper), oklch(94% 0.012 250));
+  background-size: auto;
   background-attachment: fixed;
 }
 
@@ -53,7 +86,7 @@ button {
 input,
 select,
 textarea {
-  color: var(--bauhaus-ink);
+  color: var(--ink);
   font: inherit;
 }
 
@@ -65,6 +98,164 @@ textarea {
 }
 
 ::selection {
-  background: var(--bauhaus-yellow);
-  color: var(--bauhaus-ink);
+  background: var(--charge);
+  color: var(--ink);
+}
+
+.electric-panel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--app-shadow-soft);
+  backdrop-filter: blur(14px);
+}
+
+.electric-subpanel {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  box-shadow: var(--app-shadow-soft);
+}
+
+.electric-input {
+  min-height: 3rem;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--ink);
+  outline: none;
+}
+
+.electric-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.electric-primary {
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  color: oklch(99% 0.005 230);
+  box-shadow:
+    0 0 0 1px oklch(100% 0 0 / 14%) inset,
+    0 10px 22px var(--accent-glow);
+}
+
+.electric-primary:hover {
+  filter: brightness(1.05);
+}
+
+.electric-danger {
+  border: 1px solid oklch(70% 0.16 25 / 58%);
+  background: oklch(97% 0.025 25);
+  color: oklch(48% 0.18 25);
+  box-shadow: 0 10px 24px oklch(55% 0.2 25 / 12%);
+}
+
+.premium-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--app-shadow-soft);
+}
+
+.premium-section {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--app-shadow);
+}
+
+.premium-cell {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.money-text,
+.number-text {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.ghost-action {
+  min-height: 2.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-weight: 700;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.ghost-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dark .electric-danger {
+  border-color: oklch(62% 0.18 25 / 55%);
+  background: oklch(28% 0.07 25);
+  color: oklch(82% 0.14 25);
+}
+
+.electric-loader {
+  position: relative;
+  display: inline-flex;
+  min-width: 138px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--ink);
+  padding: 0.9rem 1.15rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  box-shadow: var(--app-shadow);
+}
+
+.electric-loader::before {
+  content: "";
+  position: absolute;
+  inset: auto -35% 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--charge), var(--accent), transparent);
+  animation: electric-surge 1s ease-in-out infinite;
+}
+
+.electric-loader::after {
+  content: "";
+  position: absolute;
+  height: 54px;
+  width: 12px;
+  transform: skewX(-18deg);
+  background: linear-gradient(180deg, transparent, var(--charge), transparent);
+  opacity: 0.72;
+  animation: electric-bolt 1.15s ease-out infinite;
+}
+
+@keyframes electric-surge {
+  0% {
+    transform: translateX(-45%);
+  }
+  100% {
+    transform: translateX(45%);
+  }
+}
+
+@keyframes electric-bolt {
+  0%,
+  100% {
+    transform: translateX(-70px) skewX(-18deg);
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.8;
+  }
+  60% {
+    transform: translateX(70px) skewX(-18deg);
+    opacity: 0;
+  }
 }

@@ -1,28 +1,64 @@
-export function calculateBill(
-  rent: number,
-  electricPrevious: number,
-  electricCurrent: number,
-  electricRate: number,
-  motorPrevious: number,
-  motorCurrent: number,
-  motorRate: number
-) {
-  const electricUnits = electricCurrent - electricPrevious;
-  const motorUnits = motorCurrent - motorPrevious;
+export type BillCalculationInput = {
+  rent: number;
+  electricPrevious: number;
+  electricCurrent: number;
+  electricRate: number;
+  electricAdjustmentAmount?: number;
+  motorPrevious: number;
+  motorCurrent: number;
+  motorRate: number;
+  motorParticipantCount: number;
+  participatesInMotor: boolean;
+  motorAdjustmentAmount?: number;
+  otherAdjustmentAmount?: number;
+};
 
-  const electricAmount = electricUnits * electricRate;
-  const motorAmount = motorUnits * motorRate;
+export function calculateBill(input: BillCalculationInput) {
+  const electricUnits =
+    input.electricCurrent - input.electricPrevious;
+  const calculatedElectricAmount =
+    electricUnits * input.electricRate;
+  const electricAdjustmentAmount =
+    input.electricAdjustmentAmount ?? 0;
+  const finalElectricAmount =
+    calculatedElectricAmount + electricAdjustmentAmount;
+
+  const motorTotalUnits =
+    input.motorCurrent - input.motorPrevious;
+  const motorShareTenantCount = Math.max(
+    1,
+    input.motorParticipantCount
+  );
+  const motorShareUnits = input.participatesInMotor
+    ? motorTotalUnits / motorShareTenantCount
+    : 0;
+  const calculatedMotorAmount =
+    motorShareUnits * input.motorRate;
+  const motorAdjustmentAmount =
+    input.motorAdjustmentAmount ?? 0;
+  const finalMotorAmount =
+    calculatedMotorAmount + motorAdjustmentAmount;
+  const otherAdjustmentAmount =
+    input.otherAdjustmentAmount ?? 0;
 
   const total =
-    rent +
-    electricAmount +
-    motorAmount;
+    input.rent +
+    finalElectricAmount +
+    finalMotorAmount +
+    otherAdjustmentAmount;
 
   return {
     electricUnits,
-    motorUnits,
-    electricAmount,
-    motorAmount,
+    calculatedElectricAmount,
+    electricAdjustmentAmount,
+    finalElectricAmount,
+    motorTotalUnits,
+    motorShareUnits,
+    motorShareTenantCount,
+    calculatedMotorAmount,
+    motorAdjustmentAmount,
+    finalMotorAmount,
+    otherAdjustmentAmount,
     total,
   };
 }

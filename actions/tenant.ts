@@ -37,6 +37,11 @@ export async function getTenants() {
 
 export async function getRentalUnitOptions() {
   return await prisma.rentalUnit.findMany({
+    where: {
+      property: {
+        isArchived: false,
+      },
+    },
     include: {
       property: true,
     },
@@ -92,6 +97,32 @@ export async function createTenantAction(
     };
   }
 
+  if (
+    monthlyRent < 0 ||
+    initialElectricReading < 0 ||
+    electricChargePerUnit < 0
+  ) {
+    return {
+      ok: false,
+      message: "Rent, readings, and electric charge cannot be negative.",
+    };
+  }
+
+  const activeTenant = await prisma.tenant.findFirst({
+    where: {
+      rentalUnitId,
+      isActive: true,
+    },
+  });
+
+  if (activeTenant) {
+    return {
+      ok: false,
+      message:
+        "This rental unit already has an active tenant. Deactivate the current tenant first.",
+    };
+  }
+
   await prisma.tenant.create({
     data: {
       name,
@@ -121,6 +152,102 @@ export async function createTenantAction(
   };
 }
 
+export async function updateTenantAction(
+  _state: TenantActionState,
+  formData: FormData
+): Promise<TenantActionState> {
+  const id = formData.get("id")?.toString() || "";
+  const name = formData.get("name")?.toString().trim() || "";
+  const phone = formData.get("phone")?.toString().trim() || "";
+  const rentalUnitId =
+    formData.get("rentalUnitId")?.toString() || "";
+  const startMonth =
+    formData.get("startMonth")?.toString() || "";
+  const isActive = formData.get("isActive") === "true";
+  const monthlyRent = Number(formData.get("monthlyRent"));
+  const initialElectricReading = Number(
+    formData.get("initialElectricReading")
+  );
+  const electricChargePerUnit = Number(
+    formData.get("electricChargePerUnit")
+  );
+
+  if (!id || !name || !rentalUnitId || !startMonth) {
+    return {
+      ok: false,
+      message:
+        "Tenant, name, rental unit, and start date are required.",
+    };
+  }
+
+  if (
+    [
+      monthlyRent,
+      initialElectricReading,
+      electricChargePerUnit,
+    ].some((value) => Number.isNaN(value))
+  ) {
+    return {
+      ok: false,
+      message: "Enter valid rent, meter readings, and electric charge.",
+    };
+  }
+
+  if (
+    monthlyRent < 0 ||
+    initialElectricReading < 0 ||
+    electricChargePerUnit < 0
+  ) {
+    return {
+      ok: false,
+      message: "Rent, readings, and electric charge cannot be negative.",
+    };
+  }
+
+  if (isActive) {
+    const activeTenant = await prisma.tenant.findFirst({
+      where: {
+        id: {
+          not: id,
+        },
+        rentalUnitId,
+        isActive: true,
+      },
+    });
+
+    if (activeTenant) {
+      return {
+        ok: false,
+        message:
+          "This rental unit already has an active tenant. Deactivate the current tenant first.",
+      };
+    }
+  }
+
+  await prisma.tenant.update({
+    where: {
+      id,
+    },
+    data: {
+      name,
+      phone,
+      rentalUnitId,
+      startMonth: new Date(startMonth),
+      isActive,
+      monthlyRent,
+      initialElectricReading,
+      electricChargePerUnit,
+    },
+  });
+
+  revalidateTenantViews();
+
+  return {
+    ok: true,
+    message: "Tenant updated.",
+  };
+}
+
 export async function toggleTenantStatus(id: string) {
   const tenant = await prisma.tenant.findUnique({
     where: {
@@ -128,10 +255,29 @@ export async function toggleTenantStatus(id: string) {
     },
     select: {
       isActive: true,
+      rentalUnitId: true,
     },
   });
 
   if (!tenant) return;
+
+  if (!tenant.isActive) {
+    const activeTenant = await prisma.tenant.findFirst({
+      where: {
+        id: {
+          not: id,
+        },
+        rentalUnitId: tenant.rentalUnitId,
+        isActive: true,
+      },
+    });
+
+    if (activeTenant) {
+      throw new Error(
+        "This rental unit already has an active tenant."
+      );
+    }
+  }
 
   await prisma.tenant.update({
     where: {
@@ -166,10 +312,29 @@ export async function toggleTenantStatusAction(
     where: { id },
     select: {
       isActive: true,
+      rentalUnitId: true,
     },
   });
 
   if (!tenant) return;
+
+  if (!tenant.isActive) {
+    const activeTenant = await prisma.tenant.findFirst({
+      where: {
+        id: {
+          not: id,
+        },
+        rentalUnitId: tenant.rentalUnitId,
+        isActive: true,
+      },
+    });
+
+    if (activeTenant) {
+      throw new Error(
+        "This rental unit already has an active tenant."
+      );
+    }
+  }
 
   await prisma.tenant.update({
     where: { id },

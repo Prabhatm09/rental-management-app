@@ -8,15 +8,27 @@ const currency = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0,
 });
 
-const month = new Intl.DateTimeFormat("en-IN", {
-  month: "short",
-  year: "numeric",
-});
+function formatMonth(value: Date) {
+  return new Date(value).toLocaleDateString("en-IN", {
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default async function DashboardPage() {
   await connection();
 
   const now = new Date();
+  const todayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+  const tomorrowStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1
+  );
   const monthStart = new Date(
     now.getFullYear(),
     now.getMonth(),
@@ -33,15 +45,20 @@ export default async function DashboardPage() {
     unitCount,
     activeTenantCount,
     vacantUnitCount,
-    billCount,
-    lifetimeBilled,
-    monthBilled,
-    paidTotal,
+    todayCollection,
+    monthCollection,
     dueTotal,
+    governmentOutstanding,
     recentBills,
-    outstandingBills,
+    highestDueBills,
+    recentReadings,
+    motorSummary,
   ] = await Promise.all([
-    prisma.property.count(),
+    prisma.property.count({
+      where: {
+        isArchived: false,
+      },
+    }),
     prisma.rentalUnit.count(),
     prisma.tenant.count({
       where: {
@@ -57,18 +74,23 @@ export default async function DashboardPage() {
         },
       },
     }),
-    prisma.bill.count(),
-    prisma.bill.aggregate({
+    prisma.payment.aggregate({
       _sum: {
-        total: true,
-      },
-    }),
-    prisma.bill.aggregate({
-      _sum: {
-        total: true,
+        amount: true,
       },
       where: {
-        month: {
+        paidAt: {
+          gte: todayStart,
+          lt: tomorrowStart,
+        },
+      },
+    }),
+    prisma.payment.aggregate({
+      _sum: {
+        amount: true,
+      },
+      where: {
+        paidAt: {
           gte: monthStart,
           lt: nextMonthStart,
         },
@@ -76,18 +98,18 @@ export default async function DashboardPage() {
     }),
     prisma.bill.aggregate({
       _sum: {
-        paidAmount: true,
+        dueAmount: true,
       },
     }),
-    prisma.bill.aggregate({
+    prisma.propertyMonthlyReading.aggregate({
       _sum: {
-        dueAmount: true,
+        governmentOutstanding: true,
       },
     }),
     prisma.bill.findMany({
       take: 5,
       orderBy: {
-        month: "desc",
+        createdAt: "desc",
       },
       include: {
         tenant: {
@@ -107,7 +129,7 @@ export default async function DashboardPage() {
           gt: 0,
         },
       },
-      take: 8,
+      take: 6,
       orderBy: {
         dueAmount: "desc",
       },
@@ -123,9 +145,36 @@ export default async function DashboardPage() {
         },
       },
     }),
+    prisma.propertyMonthlyReading.findMany({
+      take: 4,
+      orderBy: {
+        month: "desc",
+      },
+      include: {
+        property: true,
+        bills: {
+          select: {
+            electricUnits: true,
+          },
+        },
+      },
+    }),
+    prisma.bill.aggregate({
+      _sum: {
+        calculatedMotorAmount: true,
+        motorAdjustmentAmount: true,
+        finalMotorAmount: true,
+      },
+      where: {
+        month: {
+          gte: monthStart,
+          lt: nextMonthStart,
+        },
+      },
+    }),
   ]);
 
-  const stats = [
+  const statCards = [
     {
       label: "Properties",
       value: propertyCount,
@@ -144,202 +193,223 @@ export default async function DashboardPage() {
     },
   ];
 
+  const moneyCards = [
+    {
+      label: "Today's Collection",
+      value: currency.format(
+        todayCollection._sum.amount ?? 0
+      ),
+      tone: "text-[var(--success)]",
+    },
+    {
+      label: "Current Month Collection",
+      value: currency.format(
+        monthCollection._sum.amount ?? 0
+      ),
+      tone: "text-[var(--success)]",
+    },
+    {
+      label: "Outstanding Amount",
+      value: currency.format(
+        dueTotal._sum.dueAmount ?? 0
+      ),
+      tone: "text-[var(--accent)]",
+    },
+    {
+      label: "Reading Reference",
+      value: currency.format(
+        governmentOutstanding._sum
+          .governmentOutstanding ?? 0
+      ),
+      tone: "text-[var(--warning)]",
+    },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-black text-slate-950 sm:text-4xl">
+        <h1 className="text-3xl font-black text-[var(--ink)] sm:text-4xl">
           Dashboard
         </h1>
-        <p className="mt-1 text-sm font-medium text-slate-500">
-          Portfolio health, billing totals, and recent activity.
+        <p className="mt-1 text-sm font-medium text-[var(--muted)]">
+          Collections, dues, meter checks, and recent billing activity.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat, index) => (
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {statCards.map((stat) => (
           <div
             key={stat.label}
-            className="relative overflow-hidden rounded-[24px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.92)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]"
+            className="premium-card p-4"
           >
-            <div
-              className={`absolute right-4 top-4 h-4 w-10 ${
-                index % 3 === 0
-                  ? "bg-[#2563EB]"
-                  : index % 3 === 1
-                    ? "bg-[#EF4444]"
-                    : "bg-[#F7C948]"
-              }`}
-            />
-            <p className="text-sm font-semibold text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] sm:text-sm">
               {stat.label}
             </p>
-            <p className="mt-3 text-3xl font-black text-slate-950">
+            <p className="number-text mt-2 text-2xl font-black text-[var(--ink)]">
               {stat.value}
             </p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[24px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.92)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]">
-          <p className="text-sm font-semibold text-slate-500">
-            Billed This Month
-          </p>
-          <p className="mt-3 text-3xl font-black text-blue-600">
-            {currency.format(
-              monthBilled._sum.total ?? 0
-            )}
-          </p>
-        </div>
-
-        <div className="rounded-[24px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.92)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]">
-          <p className="text-sm font-semibold text-slate-500">
-            Lifetime Billed
-          </p>
-          <p className="mt-3 text-3xl font-black text-slate-950">
-            {currency.format(
-              lifetimeBilled._sum.total ?? 0
-            )}
-          </p>
-        </div>
-
-        <div className="rounded-[24px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.92)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]">
-          <p className="text-sm font-semibold text-slate-500">
-            Bills Generated
-          </p>
-          <p className="mt-3 text-3xl font-black text-slate-950">
-            {billCount}
-          </p>
-        </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {moneyCards.map((card) => (
+          <div
+            key={card.label}
+            className="premium-card p-4"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              {card.label}
+            </p>
+            <p className={`money-text mt-2 text-2xl font-black ${card.tone}`}>
+              {card.value}
+            </p>
+          </div>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[24px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.92)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]">
-          <p className="text-sm font-semibold text-slate-500">
-            Paid Amount
-          </p>
-          <p className="mt-3 text-3xl font-black text-green-700">
-            {currency.format(
-              paidTotal._sum.paidAmount ?? 0
-            )}
-          </p>
-        </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="premium-section p-4">
+          <h2 className="text-lg font-black text-[var(--ink)]">
+            Reading Reference
+          </h2>
+          <div className="mt-4 space-y-3">
+            {recentReadings.map((reading) => {
+              const tenantUnits = reading.bills.reduce(
+                (total, bill) => total + bill.electricUnits,
+                0
+              );
+              const difference =
+                reading.governmentUnits - tenantUnits;
 
-        <div className="rounded-[24px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.92)] p-5 shadow-[0_18px_48px_oklch(38%_0.12_252/10%)]">
-          <p className="text-sm font-semibold text-slate-500">
-            Due Amount
-          </p>
-          <p className="mt-3 text-3xl font-black text-blue-600">
-            {currency.format(
-              dueTotal._sum.dueAmount ?? 0
+              return (
+                <div
+                  key={reading.id}
+                  className="premium-cell p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-[var(--ink)]">
+                        {reading.property.name}
+                      </p>
+                      <p className="text-sm text-[var(--muted)]">
+                        {formatMonth(reading.month)}
+                      </p>
+                    </div>
+                    {Math.abs(difference) > 0.001 && (
+                      <span className="rounded-full bg-amber-500/10 px-2 py-1 text-xs font-semibold text-[var(--warning)]">
+                        Mismatch
+                      </span>
+                    )}
+                  </div>
+                  <p className="number-text mt-2 text-sm text-[var(--muted)]">
+                    Govt {reading.governmentUnits} · Tenant{" "}
+                    {tenantUnits} · Difference {difference}
+                  </p>
+                </div>
+              );
+            })}
+            {recentReadings.length === 0 && (
+              <p className="text-sm text-[var(--muted)]">
+                No property readings yet.
+              </p>
             )}
-          </p>
-        </div>
+          </div>
+        </section>
+
+        <section className="premium-section p-4">
+          <h2 className="text-lg font-black text-[var(--ink)]">
+            Motor Summary
+          </h2>
+          <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="premium-cell p-3">
+              <dt className="text-sm text-[var(--muted)]">
+                Calculated
+              </dt>
+              <dd className="money-text font-black text-[var(--ink)]">
+                {currency.format(
+                  motorSummary._sum
+                    .calculatedMotorAmount ?? 0
+                )}
+              </dd>
+            </div>
+            <div className="premium-cell p-3">
+              <dt className="text-sm text-[var(--muted)]">
+                Adjustment
+              </dt>
+              <dd className="money-text font-black text-[var(--ink)]">
+                {currency.format(
+                  motorSummary._sum
+                    .motorAdjustmentAmount ?? 0
+                )}
+              </dd>
+            </div>
+            <div className="premium-cell p-3">
+              <dt className="text-sm text-[var(--muted)]">Final</dt>
+              <dd className="money-text font-black text-[var(--ink)]">
+                {currency.format(
+                  motorSummary._sum.finalMotorAmount ?? 0
+                )}
+              </dd>
+            </div>
+          </dl>
+        </section>
       </div>
 
-      <div className="overflow-x-auto rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.9)] shadow-[0_18px_48px_oklch(38%_0.12_252/10%)] backdrop-blur-xl">
-        <div className="border-b border-[oklch(88%_0.04_247)] p-5">
-          <h2 className="text-xl font-black text-slate-950">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="premium-section p-4">
+          <h2 className="text-lg font-black text-[var(--ink)]">
             Recent Bills
           </h2>
-        </div>
-
-        <table className="w-full min-w-[720px]">
-          <thead className="border-b border-[oklch(88%_0.04_247)] text-sm text-slate-500">
-            <tr>
-              <th className="p-4 text-left">Tenant</th>
-              <th className="p-4 text-left">Property</th>
-              <th className="p-4 text-left">Month</th>
-              <th className="p-4 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
+          <div className="mt-4 space-y-3">
             {recentBills.map((bill) => (
-              <tr
+              <div
                 key={bill.id}
-                className="border-b border-[oklch(92%_0.035_247)] last:border-0"
+                className="premium-cell flex items-center justify-between gap-3 p-3"
               >
-                <td className="p-4">
-                  {bill.tenant.name}
-                </td>
-                <td className="p-4">
-                  {
-                    bill.tenant.rentalUnit.property
-                      .name
-                  }
-                </td>
-                <td className="p-4">
-                  {month.format(bill.month)}
-                </td>
-                <td className="p-4 text-right font-semibold text-blue-600">
+                <div>
+                  <p className="font-semibold text-[var(--ink)]">
+                    {bill.tenant.name}
+                  </p>
+                  <p className="text-sm text-[var(--muted)]">
+                    {bill.tenant.rentalUnit.property.name} ·{" "}
+                    {formatMonth(bill.month)}
+                  </p>
+                </div>
+                <p className="money-text font-black text-[var(--ink)]">
                   {currency.format(bill.total)}
-                </td>
-              </tr>
+                </p>
+              </div>
             ))}
+          </div>
+        </section>
 
-            {recentBills.length === 0 && (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="p-8 text-center text-slate-500"
-                >
-                  No bills generated yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="overflow-x-auto rounded-[28px] border border-[oklch(88%_0.04_247)] bg-[oklch(99%_0.006_250/0.9)] shadow-[0_18px_48px_oklch(38%_0.12_252/10%)] backdrop-blur-xl">
-        <div className="border-b border-[oklch(88%_0.04_247)] p-5">
-          <h2 className="text-xl font-black text-slate-950">
-            Outstanding By Tenant
+        <section className="premium-section p-4">
+          <h2 className="text-lg font-black text-[var(--ink)]">
+            Highest Due Bills
           </h2>
-        </div>
-
-        <table className="w-full min-w-[720px]">
-          <thead className="border-b border-[oklch(88%_0.04_247)] text-sm text-slate-500">
-            <tr>
-              <th className="p-4 text-left">Tenant</th>
-              <th className="p-4 text-left">Property</th>
-              <th className="p-4 text-left">Month</th>
-              <th className="p-4 text-right">Due</th>
-            </tr>
-          </thead>
-          <tbody>
-            {outstandingBills.map((bill) => (
-              <tr
+          <div className="mt-4 space-y-3">
+            {highestDueBills.map((bill) => (
+              <div
                 key={bill.id}
-                className="border-b border-[oklch(92%_0.035_247)] last:border-0"
+                className="premium-cell flex items-center justify-between gap-3 p-3"
               >
-                <td className="p-4">
-                  {bill.tenant.name}
-                </td>
-                <td className="p-4">
-                  {bill.tenant.rentalUnit.property.name}
-                </td>
-                <td className="p-4">
-                  {month.format(bill.month)}
-                </td>
-                <td className="p-4 text-right font-semibold text-blue-600">
+                <div>
+                  <p className="font-semibold text-[var(--ink)]">
+                    {bill.tenant.name}
+                  </p>
+                  <p className="text-sm text-[var(--muted)]">
+                    {bill.tenant.rentalUnit.property.name} ·{" "}
+                    {formatMonth(bill.month)}
+                  </p>
+                </div>
+                <p className="money-text font-black text-[var(--accent)]">
                   {currency.format(bill.dueAmount)}
-                </td>
-              </tr>
+                </p>
+              </div>
             ))}
-
-            {outstandingBills.length === 0 && (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="p-8 text-center text-slate-500"
-                >
-                  No outstanding dues.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+          </div>
+        </section>
       </div>
     </div>
   );

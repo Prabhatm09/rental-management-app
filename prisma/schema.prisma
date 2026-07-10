@@ -13,14 +13,17 @@ model Property {
   address   String?
   motorInitialReading Float @default(0)
   motorChargePerUnit  Float @default(8)
+  isArchived Boolean @default(false)
   createdAt DateTime @default(now())
 
   units RentalUnit[]
+  readings PropertyMonthlyReading[]
 }
 
 model RentalUnit {
   id         String   @id @default(cuid())
   name       String
+  participatesInMotor Boolean @default(true)
 
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id])
@@ -62,6 +65,9 @@ model Bill {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
+  propertyReadingId String?
+  propertyReading   PropertyMonthlyReading? @relation(fields: [propertyReadingId], references: [id])
+
   month DateTime
 
   rent Float
@@ -79,11 +85,18 @@ model Bill {
 
   electricChargePerUnit Float
   electricAmount Float @default(0)
+  calculatedElectricAmount Float @default(0)
+  electricAdjustmentAmount Float @default(0)
+  finalElectricAmount Float @default(0)
 
   motorRate Float
   motorAmount Float @default(0)
+  calculatedMotorAmount Float @default(0)
+  motorAdjustmentAmount Float @default(0)
+  finalMotorAmount Float @default(0)
 
   adjustmentAmount Float @default(0)
+  otherAdjustmentAmount Float @default(0)
 
   total Float
   paidAmount Float @default(0)
@@ -107,8 +120,36 @@ model Payment {
 
   amount Float
   method String?
+  transactionReference String?
   note   String?
   paidAt DateTime @default(now())
 
   createdAt DateTime @default(now())
+}
+
+model PropertyMonthlyReading {
+  id String @id @default(cuid())
+
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+
+  month DateTime
+
+  governmentPreviousReading Float
+  governmentCurrentReading Float
+  governmentUnits Float
+
+  motorPreviousReading Float
+  motorCurrentReading Float
+  motorUnits Float
+
+  governmentBillAmount Float @default(0)
+  governmentOutstanding Float @default(0)
+
+  bills Bill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([propertyId, month])
 }

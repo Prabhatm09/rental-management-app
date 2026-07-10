@@ -17,6 +17,7 @@ export async function getProperties() {
       _count: {
         select: {
           units: true,
+          readings: true,
         },
       },
     },
@@ -40,11 +41,19 @@ export async function createProperty(formData: FormData) {
     throw new Error("Property name is required.");
   }
 
+  if (name.length < 2) {
+    throw new Error("Property name must be at least 2 characters.");
+  }
+
   if (
     Number.isNaN(motorInitialReading) ||
     Number.isNaN(motorChargePerUnit)
   ) {
     throw new Error("Motor fields must be valid numbers.");
+  }
+
+  if (motorInitialReading < 0 || motorChargePerUnit < 0) {
+    throw new Error("Motor reading and rate cannot be negative.");
   }
 
   await prisma.property.create({
@@ -59,18 +68,101 @@ export async function createProperty(formData: FormData) {
   revalidatePropertyViews();
 }
 
-export async function deleteProperty(id: string) {
-  const rentalUnitCount = await prisma.rentalUnit.count({
-    where: {
-      propertyId: id,
+export async function updateProperty(formData: FormData) {
+  const id = formData.get("id")?.toString();
+  const name = formData.get("name")?.toString().trim();
+  const address = formData.get("address")?.toString().trim();
+  const motorInitialReading = Number(
+    formData.get("motorInitialReading") || 0
+  );
+  const motorChargePerUnit = Number(
+    formData.get("motorChargePerUnit") || 8
+  );
+
+  if (!id) {
+    throw new Error("Property is required.");
+  }
+
+  if (!name || name.length < 2) {
+    throw new Error("Property name must be at least 2 characters.");
+  }
+
+  if (
+    Number.isNaN(motorInitialReading) ||
+    Number.isNaN(motorChargePerUnit)
+  ) {
+    throw new Error("Motor fields must be valid numbers.");
+  }
+
+  if (motorInitialReading < 0 || motorChargePerUnit < 0) {
+    throw new Error("Motor reading and rate cannot be negative.");
+  }
+
+  await prisma.property.update({
+    where: { id },
+    data: {
+      name,
+      address,
+      motorInitialReading,
+      motorChargePerUnit,
     },
   });
 
-  if (rentalUnitCount > 0) {
+  revalidatePropertyViews();
+}
+
+export async function archiveProperty(id: string) {
+  await prisma.property.update({
+    where: { id },
+    data: {
+      isArchived: true,
+    },
+  });
+
+  revalidatePropertyViews();
+
+  return {
+    ok: true,
+    message: "Property archived.",
+  };
+}
+
+export async function restoreProperty(id: string) {
+  await prisma.property.update({
+    where: { id },
+    data: {
+      isArchived: false,
+    },
+  });
+
+  revalidatePropertyViews();
+
+  return {
+    ok: true,
+    message: "Property restored.",
+  };
+}
+
+export async function deleteProperty(id: string) {
+  const [rentalUnitCount, readingCount] =
+    await Promise.all([
+      prisma.rentalUnit.count({
+        where: {
+          propertyId: id,
+        },
+      }),
+      prisma.propertyMonthlyReading.count({
+        where: {
+          propertyId: id,
+        },
+      }),
+    ]);
+
+  if (rentalUnitCount > 0 || readingCount > 0) {
     return {
       ok: false,
       message:
-        "Cannot delete property. Remove rental units first.",
+        "Cannot delete property with units or readings. Archive it instead.",
     };
   }
 
