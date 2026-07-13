@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { requireOwner } from "@/lib/owner";
 import { revalidatePath } from "next/cache";
 
 function revalidatePropertyViews() {
@@ -12,7 +13,12 @@ function revalidatePropertyViews() {
 }
 
 export async function getProperties() {
+  const owner = await requireOwner();
+
   return await prisma.property.findMany({
+    where: {
+      ownerId: owner.id,
+    },
     include: {
       _count: {
         select: {
@@ -28,6 +34,7 @@ export async function getProperties() {
 }
 
 export async function createProperty(formData: FormData) {
+  const owner = await requireOwner();
   const name = formData.get("name")?.toString().trim();
   const address = formData.get("address")?.toString().trim();
   const motorInitialReading = Number(
@@ -62,6 +69,7 @@ export async function createProperty(formData: FormData) {
       address,
       motorInitialReading,
       motorChargePerUnit,
+      ownerId: owner.id,
     },
   });
 
@@ -69,6 +77,7 @@ export async function createProperty(formData: FormData) {
 }
 
 export async function updateProperty(formData: FormData) {
+  const owner = await requireOwner();
   const id = formData.get("id")?.toString();
   const name = formData.get("name")?.toString().trim();
   const address = formData.get("address")?.toString().trim();
@@ -98,8 +107,22 @@ export async function updateProperty(formData: FormData) {
     throw new Error("Motor reading and rate cannot be negative.");
   }
 
+  const property = await prisma.property.findFirst({
+    where: {
+      id,
+      ownerId: owner.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    throw new Error("Property not found.");
+  }
+
   await prisma.property.update({
-    where: { id },
+    where: { id: property.id },
     data: {
       name,
       address,
@@ -112,8 +135,27 @@ export async function updateProperty(formData: FormData) {
 }
 
 export async function archiveProperty(id: string) {
+  const owner = await requireOwner();
+
+  const property = await prisma.property.findFirst({
+    where: {
+      id,
+      ownerId: owner.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    return {
+      ok: false,
+      message: "Property not found.",
+    };
+  }
+
   await prisma.property.update({
-    where: { id },
+    where: { id: property.id },
     data: {
       isArchived: true,
     },
@@ -128,8 +170,27 @@ export async function archiveProperty(id: string) {
 }
 
 export async function restoreProperty(id: string) {
+  const owner = await requireOwner();
+
+  const property = await prisma.property.findFirst({
+    where: {
+      id,
+      ownerId: owner.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    return {
+      ok: false,
+      message: "Property not found.",
+    };
+  }
+
   await prisma.property.update({
-    where: { id },
+    where: { id: property.id },
     data: {
       isArchived: false,
     },
@@ -144,16 +205,35 @@ export async function restoreProperty(id: string) {
 }
 
 export async function deleteProperty(id: string) {
+  const owner = await requireOwner();
+
+  const property = await prisma.property.findFirst({
+    where: {
+      id,
+      ownerId: owner.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    return {
+      ok: false,
+      message: "Property not found.",
+    };
+  }
+
   const [rentalUnitCount, readingCount] =
     await Promise.all([
       prisma.rentalUnit.count({
         where: {
-          propertyId: id,
+          propertyId: property.id,
         },
       }),
       prisma.propertyMonthlyReading.count({
         where: {
-          propertyId: id,
+          propertyId: property.id,
         },
       }),
     ]);
@@ -168,7 +248,7 @@ export async function deleteProperty(id: string) {
 
   await prisma.property.delete({
     where: {
-      id,
+      id: property.id,
     },
   });
 

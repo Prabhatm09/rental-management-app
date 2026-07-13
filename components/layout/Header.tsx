@@ -1,6 +1,12 @@
 import ThemeToggle from "./ThemeToggle";
+import SignOutButton from "./SignOutButton";
+import type { CurrentOwner } from "@/lib/owner";
 
-export default function Header() {
+export default function Header({
+  owner,
+}: {
+  owner: CurrentOwner;
+}) {
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3 backdrop-blur-xl md:px-8">
       <div className="flex min-h-12 items-center justify-between gap-4">
@@ -14,12 +20,16 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-2 sm:flex">
-            <div className="h-7 w-7 rounded-full bg-[var(--charge)]" />
-            <div className="h-7 w-7 rounded-[9px] bg-[var(--danger)]" />
-            <div className="h-7 w-7 rounded-[9px] bg-[var(--accent)]" />
+          <div className="hidden text-right sm:block">
+            <p className="max-w-[180px] truncate text-sm font-black text-[var(--ink)]">
+              {owner.name || "Owner"}
+            </p>
+            <p className="max-w-[180px] truncate text-xs font-medium text-[var(--muted)]">
+              {owner.email}
+            </p>
           </div>
           <ThemeToggle />
+          <SignOutButton />
         </div>
       </div>
     </header>

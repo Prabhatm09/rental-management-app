@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { requireOwner } from "@/lib/owner";
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -17,6 +18,7 @@ function formatMonth(value: Date) {
 
 export default async function DashboardPage() {
   await connection();
+  const owner = await requireOwner();
 
   const now = new Date();
   const todayStart = new Date(
@@ -45,28 +47,35 @@ export default async function DashboardPage() {
     unitCount,
     activeTenantCount,
     vacantUnitCount,
-    todayCollection,
-    monthCollection,
-    dueTotal,
-    governmentOutstanding,
-    recentBills,
-    highestDueBills,
-    recentReadings,
-    motorSummary,
   ] = await Promise.all([
     prisma.property.count({
       where: {
         isArchived: false,
-      },
-    }),
-    prisma.rentalUnit.count(),
-    prisma.tenant.count({
-      where: {
-        isActive: true,
+        ownerId: owner.id,
       },
     }),
     prisma.rentalUnit.count({
       where: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
+    }),
+    prisma.tenant.count({
+      where: {
+        isActive: true,
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+      },
+    }),
+    prisma.rentalUnit.count({
+      where: {
+        property: {
+          ownerId: owner.id,
+        },
         tenants: {
           none: {
             isActive: true,
@@ -74,105 +83,173 @@ export default async function DashboardPage() {
         },
       },
     }),
-    prisma.payment.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        paidAt: {
-          gte: todayStart,
-          lt: tomorrowStart,
-        },
-      },
-    }),
-    prisma.payment.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        paidAt: {
-          gte: monthStart,
-          lt: nextMonthStart,
-        },
-      },
-    }),
-    prisma.bill.aggregate({
-      _sum: {
-        dueAmount: true,
-      },
-    }),
-    prisma.propertyMonthlyReading.aggregate({
-      _sum: {
-        governmentOutstanding: true,
-      },
-    }),
-    prisma.bill.findMany({
-      take: 5,
-      orderBy: {
-        createdAt: "desc",
-      },
-      include: {
-        tenant: {
-          include: {
-            rentalUnit: {
-              include: {
-                property: true,
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.bill.findMany({
-      where: {
-        dueAmount: {
-          gt: 0,
-        },
-      },
-      take: 6,
-      orderBy: {
-        dueAmount: "desc",
-      },
-      include: {
-        tenant: {
-          include: {
-            rentalUnit: {
-              include: {
-                property: true,
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.propertyMonthlyReading.findMany({
-      take: 4,
-      orderBy: {
-        month: "desc",
-      },
-      include: {
-        property: true,
-        bills: {
-          select: {
-            electricUnits: true,
-          },
-        },
-      },
-    }),
-    prisma.bill.aggregate({
-      _sum: {
-        calculatedMotorAmount: true,
-        motorAdjustmentAmount: true,
-        finalMotorAmount: true,
-      },
-      where: {
-        month: {
-          gte: monthStart,
-          lt: nextMonthStart,
-        },
-      },
-    }),
   ]);
+
+  const [todayCollection, monthCollection, dueTotal, governmentOutstanding] =
+    await Promise.all([
+      prisma.payment.aggregate({
+        _sum: {
+          amount: true,
+        },
+        where: {
+          bill: {
+            tenant: {
+              rentalUnit: {
+                property: {
+                  ownerId: owner.id,
+                },
+              },
+            },
+          },
+          paidAt: {
+            gte: todayStart,
+            lt: tomorrowStart,
+          },
+        },
+      }),
+      prisma.payment.aggregate({
+        _sum: {
+          amount: true,
+        },
+        where: {
+          bill: {
+            tenant: {
+              rentalUnit: {
+                property: {
+                  ownerId: owner.id,
+                },
+              },
+            },
+          },
+          paidAt: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
+        },
+      }),
+      prisma.bill.aggregate({
+        _sum: {
+          dueAmount: true,
+        },
+        where: {
+          tenant: {
+            rentalUnit: {
+              property: {
+                ownerId: owner.id,
+              },
+            },
+          },
+        },
+      }),
+      prisma.propertyMonthlyReading.aggregate({
+        _sum: {
+          governmentOutstanding: true,
+        },
+        where: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+      }),
+    ]);
+
+  const [recentBills, highestDueBills, recentReadings, motorSummary] =
+    await Promise.all([
+      prisma.bill.findMany({
+        where: {
+          tenant: {
+            rentalUnit: {
+              property: {
+                ownerId: owner.id,
+              },
+            },
+          },
+        },
+        take: 5,
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          tenant: {
+            include: {
+              rentalUnit: {
+                include: {
+                  property: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.bill.findMany({
+        where: {
+          dueAmount: {
+            gt: 0,
+          },
+          tenant: {
+            rentalUnit: {
+              property: {
+                ownerId: owner.id,
+              },
+            },
+          },
+        },
+        take: 6,
+        orderBy: {
+          dueAmount: "desc",
+        },
+        include: {
+          tenant: {
+            include: {
+              rentalUnit: {
+                include: {
+                  property: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.propertyMonthlyReading.findMany({
+        where: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+        take: 4,
+        orderBy: {
+          month: "desc",
+        },
+        include: {
+          property: true,
+          bills: {
+            select: {
+              electricUnits: true,
+            },
+          },
+        },
+      }),
+      prisma.bill.aggregate({
+        _sum: {
+          calculatedMotorAmount: true,
+          motorAdjustmentAmount: true,
+          finalMotorAmount: true,
+        },
+        where: {
+          tenant: {
+            rentalUnit: {
+              property: {
+                ownerId: owner.id,
+              },
+            },
+          },
+          month: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
+        },
+      }),
+    ]);
 
   const statCards = [
     {

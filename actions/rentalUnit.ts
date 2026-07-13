@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { requireOwner } from "@/lib/owner";
 import { revalidatePath } from "next/cache";
 
 function revalidateRentalUnitViews() {
@@ -12,7 +13,14 @@ function revalidateRentalUnitViews() {
 }
 
 export async function getRentalUnits() {
+  const owner = await requireOwner();
+
   return await prisma.rentalUnit.findMany({
+    where: {
+      property: {
+        ownerId: owner.id,
+      },
+    },
     include: {
       property: true,
       _count: {
@@ -28,9 +36,12 @@ export async function getRentalUnits() {
 }
 
 export async function getProperties() {
+  const owner = await requireOwner();
+
   return await prisma.property.findMany({
     where: {
       isArchived: false,
+      ownerId: owner.id,
     },
     orderBy: {
       name: "asc",
@@ -39,6 +50,7 @@ export async function getProperties() {
 }
 
 export async function createRentalUnit(formData: FormData) {
+  const owner = await requireOwner();
   const name = formData.get("name")?.toString().trim();
   const propertyId = formData.get("propertyId")?.toString();
   const participatesInMotor =
@@ -48,9 +60,24 @@ export async function createRentalUnit(formData: FormData) {
     throw new Error("All fields are required.");
   }
 
+  const property = await prisma.property.findFirst({
+    where: {
+      id: propertyId,
+      ownerId: owner.id,
+      isArchived: false,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    throw new Error("Property not found.");
+  }
+
   const existingUnit = await prisma.rentalUnit.findFirst({
     where: {
-      propertyId,
+      propertyId: property.id,
       name: {
         equals: name,
         mode: "insensitive",
@@ -65,7 +92,7 @@ export async function createRentalUnit(formData: FormData) {
   await prisma.rentalUnit.create({
     data: {
       name,
-      propertyId,
+      propertyId: property.id,
       participatesInMotor,
     },
   });
@@ -74,6 +101,7 @@ export async function createRentalUnit(formData: FormData) {
 }
 
 export async function updateRentalUnit(formData: FormData) {
+  const owner = await requireOwner();
   const id = formData.get("id")?.toString();
   const name = formData.get("name")?.toString().trim();
   const propertyId = formData.get("propertyId")?.toString();
@@ -84,12 +112,40 @@ export async function updateRentalUnit(formData: FormData) {
     throw new Error("All fields are required.");
   }
 
+  const [unit, destinationProperty] = await Promise.all([
+    prisma.rentalUnit.findFirst({
+      where: {
+        id,
+        property: {
+          ownerId: owner.id,
+        },
+      },
+      select: {
+        id: true,
+      },
+    }),
+    prisma.property.findFirst({
+      where: {
+        id: propertyId,
+        ownerId: owner.id,
+        isArchived: false,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  ]);
+
+  if (!unit || !destinationProperty) {
+    throw new Error("Rental unit or property not found.");
+  }
+
   const existingUnit = await prisma.rentalUnit.findFirst({
     where: {
       id: {
         not: id,
       },
-      propertyId,
+      propertyId: destinationProperty.id,
       name: {
         equals: name,
         mode: "insensitive",
@@ -103,11 +159,11 @@ export async function updateRentalUnit(formData: FormData) {
 
   await prisma.rentalUnit.update({
     where: {
-      id,
+      id: unit.id,
     },
     data: {
       name,
-      propertyId,
+      propertyId: destinationProperty.id,
       participatesInMotor,
     },
   });
@@ -116,9 +172,30 @@ export async function updateRentalUnit(formData: FormData) {
 }
 
 export async function deleteRentalUnit(id: string) {
+  const owner = await requireOwner();
+
+  const unit = await prisma.rentalUnit.findFirst({
+    where: {
+      id,
+      property: {
+        ownerId: owner.id,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!unit) {
+    return {
+      ok: false,
+      message: "Rental unit not found.",
+    };
+  }
+
   const tenantCount = await prisma.tenant.count({
     where: {
-      rentalUnitId: id,
+      rentalUnitId: unit.id,
     },
   });
 
@@ -132,7 +209,7 @@ export async function deleteRentalUnit(id: string) {
 
   await prisma.rentalUnit.delete({
     where: {
-      id,
+      id: unit.id,
     },
   });
 

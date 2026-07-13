@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { requireOwner } from "@/lib/owner";
 import { revalidatePath } from "next/cache";
 
 export type TenantActionState = {
@@ -21,7 +22,16 @@ function revalidateTenantViews() {
 }
 
 export async function getTenants() {
+  const owner = await requireOwner();
+
   return await prisma.tenant.findMany({
+    where: {
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
+    },
     include: {
       rentalUnit: {
         include: {
@@ -36,10 +46,13 @@ export async function getTenants() {
 }
 
 export async function getRentalUnitOptions() {
+  const owner = await requireOwner();
+
   return await prisma.rentalUnit.findMany({
     where: {
       property: {
         isArchived: false,
+        ownerId: owner.id,
       },
     },
     include: {
@@ -59,6 +72,7 @@ export async function createTenantAction(
   _state: TenantActionState,
   formData: FormData
 ): Promise<TenantActionState> {
+  const owner = await requireOwner();
   const name = formData.get("name")?.toString().trim() || "";
   const phone = formData.get("phone")?.toString().trim() || "";
   const rentalUnitId =
@@ -108,10 +122,35 @@ export async function createTenantAction(
     };
   }
 
+  const rentalUnit = await prisma.rentalUnit.findFirst({
+    where: {
+      id: rentalUnitId,
+      property: {
+        ownerId: owner.id,
+        isArchived: false,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!rentalUnit) {
+    return {
+      ok: false,
+      message: "Rental unit not found.",
+    };
+  }
+
   const activeTenant = await prisma.tenant.findFirst({
     where: {
-      rentalUnitId,
+      rentalUnitId: rentalUnit.id,
       isActive: true,
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
     },
   });
 
@@ -128,7 +167,7 @@ export async function createTenantAction(
       name,
       phone,
 
-      rentalUnitId,
+      rentalUnitId: rentalUnit.id,
 
       startMonth: new Date(startMonth),
 
@@ -156,6 +195,7 @@ export async function updateTenantAction(
   _state: TenantActionState,
   formData: FormData
 ): Promise<TenantActionState> {
+  const owner = await requireOwner();
   const id = formData.get("id")?.toString() || "";
   const name = formData.get("name")?.toString().trim() || "";
   const phone = formData.get("phone")?.toString().trim() || "";
@@ -204,14 +244,54 @@ export async function updateTenantAction(
     };
   }
 
+  const [tenant, rentalUnit] = await Promise.all([
+    prisma.tenant.findFirst({
+      where: {
+        id,
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    }),
+    prisma.rentalUnit.findFirst({
+      where: {
+        id: rentalUnitId,
+        property: {
+          ownerId: owner.id,
+          isArchived: false,
+        },
+      },
+      select: {
+        id: true,
+      },
+    }),
+  ]);
+
+  if (!tenant || !rentalUnit) {
+    return {
+      ok: false,
+      message: "Tenant or rental unit not found.",
+    };
+  }
+
   if (isActive) {
     const activeTenant = await prisma.tenant.findFirst({
       where: {
         id: {
-          not: id,
+          not: tenant.id,
         },
-        rentalUnitId,
+        rentalUnitId: rentalUnit.id,
         isActive: true,
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
       },
     });
 
@@ -226,12 +306,12 @@ export async function updateTenantAction(
 
   await prisma.tenant.update({
     where: {
-      id,
+      id: tenant.id,
     },
     data: {
       name,
       phone,
-      rentalUnitId,
+      rentalUnitId: rentalUnit.id,
       startMonth: new Date(startMonth),
       isActive,
       monthlyRent,
@@ -249,11 +329,19 @@ export async function updateTenantAction(
 }
 
 export async function toggleTenantStatus(id: string) {
-  const tenant = await prisma.tenant.findUnique({
+  const owner = await requireOwner();
+
+  const tenant = await prisma.tenant.findFirst({
     where: {
       id,
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
     },
     select: {
+      id: true,
       isActive: true,
       rentalUnitId: true,
     },
@@ -269,6 +357,11 @@ export async function toggleTenantStatus(id: string) {
         },
         rentalUnitId: tenant.rentalUnitId,
         isActive: true,
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
       },
     });
 
@@ -292,9 +385,27 @@ export async function toggleTenantStatus(id: string) {
 }
 
 export async function deleteTenant(id: string) {
-  await prisma.tenant.delete({
+  const owner = await requireOwner();
+
+  const tenant = await prisma.tenant.findFirst({
     where: {
       id,
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!tenant) return;
+
+  await prisma.tenant.delete({
+    where: {
+      id: tenant.id,
     },
   });
 
@@ -304,13 +415,22 @@ export async function deleteTenant(id: string) {
 export async function toggleTenantStatusAction(
   formData: FormData
 ) {
+  const owner = await requireOwner();
   const id = formData.get("id")?.toString();
 
   if (!id) return;
 
-  const tenant = await prisma.tenant.findUnique({
-    where: { id },
+  const tenant = await prisma.tenant.findFirst({
+    where: {
+      id,
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
+    },
     select: {
+      id: true,
       isActive: true,
       rentalUnitId: true,
     },
@@ -326,6 +446,11 @@ export async function toggleTenantStatusAction(
         },
         rentalUnitId: tenant.rentalUnitId,
         isActive: true,
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
       },
     });
 
@@ -337,7 +462,7 @@ export async function toggleTenantStatusAction(
   }
 
   await prisma.tenant.update({
-    where: { id },
+    where: { id: tenant.id },
     data: {
       isActive: !tenant.isActive,
     },

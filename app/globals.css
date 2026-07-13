@@ -142,6 +142,13 @@ textarea {
   filter: brightness(1.05);
 }
 
+.electric-strip {
+  background:
+    linear-gradient(90deg, var(--accent), var(--charge), var(--success)),
+    var(--accent);
+  box-shadow: 0 0 28px var(--accent-glow);
+}
+
 .electric-danger {
   border: 1px solid oklch(70% 0.16 25 / 58%);
   background: oklch(97% 0.025 25);

@@ -8,21 +8,25 @@ datasource db {
 }
 
 model Property {
-  id        String   @id @default(cuid())
-  name      String
-  address   String?
-  motorInitialReading Float @default(0)
-  motorChargePerUnit  Float @default(8)
-  isArchived Boolean @default(false)
-  createdAt DateTime @default(now())
+  id                  String   @id @default(cuid())
+  name                String
+  address             String?
+  motorInitialReading Float    @default(0)
+  motorChargePerUnit  Float    @default(8)
+  isArchived          Boolean  @default(false)
+  ownerId             String?
+  owner               User?    @relation(fields: [ownerId], references: [id])
+  createdAt           DateTime @default(now())
 
-  units RentalUnit[]
+  units    RentalUnit[]
   readings PropertyMonthlyReading[]
+
+  @@index([ownerId])
 }
 
 model RentalUnit {
-  id         String   @id @default(cuid())
-  name       String
+  id                  String  @id @default(cuid())
+  name                String
   participatesInMotor Boolean @default(true)
 
   propertyId String
@@ -49,7 +53,7 @@ model Tenant {
   monthlyRent Float
 
   initialElectricReading Float
-  initialMotorReading     Float @default(0)
+  initialMotorReading    Float @default(0)
 
   electricChargePerUnit Float
 
@@ -73,35 +77,35 @@ model Bill {
   rent Float
 
   electricPrevious Float
-  electricCurrent Float
-  electricUnits Float
+  electricCurrent  Float
+  electricUnits    Float
 
-  motorPrevious Float
-  motorCurrent Float
-  motorUnits Float
-  motorTotalUnits Float @default(0)
-  motorShareUnits Float @default(0)
-  motorShareTenantCount Int @default(1)
+  motorPrevious         Float
+  motorCurrent          Float
+  motorUnits            Float
+  motorTotalUnits       Float @default(0)
+  motorShareUnits       Float @default(0)
+  motorShareTenantCount Int   @default(1)
 
-  electricChargePerUnit Float
-  electricAmount Float @default(0)
+  electricChargePerUnit    Float
+  electricAmount           Float @default(0)
   calculatedElectricAmount Float @default(0)
   electricAdjustmentAmount Float @default(0)
-  finalElectricAmount Float @default(0)
+  finalElectricAmount      Float @default(0)
 
-  motorRate Float
-  motorAmount Float @default(0)
+  motorRate             Float
+  motorAmount           Float @default(0)
   calculatedMotorAmount Float @default(0)
   motorAdjustmentAmount Float @default(0)
-  finalMotorAmount Float @default(0)
+  finalMotorAmount      Float @default(0)
 
-  adjustmentAmount Float @default(0)
+  adjustmentAmount      Float @default(0)
   otherAdjustmentAmount Float @default(0)
 
-  total Float
-  paidAmount Float @default(0)
-  dueAmount Float @default(0)
-  status String @default("UNPAID")
+  total        Float
+  paidAmount   Float   @default(0)
+  dueAmount    Float   @default(0)
+  status       String  @default("UNPAID")
   shareMessage String?
 
   payments Payment[]
@@ -116,13 +120,13 @@ model Payment {
   id String @id @default(cuid())
 
   billId String
-  bill   Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
 
-  amount Float
-  method String?
+  amount               Float
+  method               String?
   transactionReference String?
-  note   String?
-  paidAt DateTime @default(now())
+  note                 String?
+  paidAt               DateTime @default(now())
 
   createdAt DateTime @default(now())
 }
@@ -136,14 +140,14 @@ model PropertyMonthlyReading {
   month DateTime
 
   governmentPreviousReading Float
-  governmentCurrentReading Float
-  governmentUnits Float
+  governmentCurrentReading  Float
+  governmentUnits           Float
 
   motorPreviousReading Float
-  motorCurrentReading Float
-  motorUnits Float
+  motorCurrentReading  Float
+  motorUnits           Float
 
-  governmentBillAmount Float @default(0)
+  governmentBillAmount  Float @default(0)
   governmentOutstanding Float @default(0)
 
   bills Bill[]
@@ -152,4 +156,62 @@ model PropertyMonthlyReading {
   updatedAt DateTime @updatedAt
 
   @@unique([propertyId, month])
+}
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions   Session[]
+  accounts   Account[]
+  properties Property[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
 }

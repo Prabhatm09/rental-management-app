@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { calculateBill } from "@/lib/calculateBill";
+import { requireOwner } from "@/lib/owner";
 
 export type BillActionState = {
   ok: boolean;
@@ -108,10 +110,21 @@ Due = Rs ${formatAmount(input.dueAmount)}
 Status = ${input.status}`;
 }
 
-async function updateBillPaymentSummary(billId: string) {
-  const bill = await prisma.bill.findUnique({
+async function updateBillPaymentSummary(
+  billId: string,
+  ownerId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma
+) {
+  const bill = await db.bill.findFirst({
     where: {
       id: billId,
+      tenant: {
+        rentalUnit: {
+          property: {
+            ownerId,
+          },
+        },
+      },
     },
     include: {
       tenant: true,
@@ -165,7 +178,7 @@ async function updateBillPaymentSummary(billId: string) {
     status,
   });
 
-  return prisma.bill.update({
+  return db.bill.update({
     where: {
       id: billId,
     },
@@ -179,7 +192,18 @@ async function updateBillPaymentSummary(billId: string) {
 }
 
 export async function getBills() {
+  const owner = await requireOwner();
+
   return prisma.bill.findMany({
+    where: {
+      tenant: {
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+      },
+    },
     include: {
       tenant: {
         include: {
@@ -203,12 +227,15 @@ export async function getBills() {
 }
 
 export async function getTenants() {
+  const owner = await requireOwner();
+
   return prisma.tenant.findMany({
     where: {
       isActive: true,
       rentalUnit: {
         property: {
           isArchived: false,
+          ownerId: owner.id,
         },
       },
     },
@@ -233,6 +260,7 @@ export async function createBillAction(
   _state: BillActionState,
   formData: FormData
 ): Promise<BillActionState> {
+  const owner = await requireOwner();
   const tenantId = String(formData.get("tenantId") ?? "");
   const month = new Date(String(formData.get("month") ?? ""));
 
@@ -243,9 +271,14 @@ export async function createBillAction(
     };
   }
 
-  const tenant = await prisma.tenant.findUnique({
+  const tenant = await prisma.tenant.findFirst({
     where: {
       id: tenantId,
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
     },
     include: {
       rentalUnit: {
@@ -286,6 +319,13 @@ export async function createBillAction(
     where: {
       tenantId,
       month: billMonthStart,
+      tenant: {
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+      },
     },
   });
 
@@ -395,23 +435,29 @@ export async function createBillAction(
           _sum: {
             motorAdjustmentAmount: true,
           },
-          where: {
-            month: billMonthStart,
-            tenant: {
-              rentalUnit: {
-                propertyId: tenant.rentalUnit.propertyId,
-              },
+      where: {
+        month: billMonthStart,
+        tenant: {
+          rentalUnit: {
+            propertyId: tenant.rentalUnit.propertyId,
+            property: {
+              ownerId: owner.id,
             },
           },
+        },
+      },
         }),
         prisma.bill.count({
           where: {
-            month: billMonthStart,
-            tenant: {
-              rentalUnit: {
-                propertyId: tenant.rentalUnit.propertyId,
+          month: billMonthStart,
+          tenant: {
+            rentalUnit: {
+              propertyId: tenant.rentalUnit.propertyId,
+              property: {
+                ownerId: owner.id,
               },
             },
+          },
           },
         }),
       ]);
@@ -535,6 +581,7 @@ export async function createBillAction(
 }
 
 export async function createPayment(formData: FormData) {
+  const owner = await requireOwner();
   const billId = String(formData.get("billId") ?? "");
   const amount = getNumber(formData, "amount");
   const method = formData.get("method")?.toString() || null;
@@ -557,32 +604,41 @@ export async function createPayment(formData: FormData) {
     throw new Error("Payment date is invalid.");
   }
 
-  const bill = await prisma.bill.findUnique({
-    where: {
-      id: billId,
-    },
+  await prisma.$transaction(async (tx) => {
+    const bill = await tx.bill.findFirst({
+      where: {
+        id: billId,
+        tenant: {
+          rentalUnit: {
+            property: {
+              ownerId: owner.id,
+            },
+          },
+        },
+      },
+    });
+
+    if (!bill) {
+      throw new Error("Bill not found.");
+    }
+
+    if (amount > bill.dueAmount) {
+      throw new Error("Payment cannot exceed due amount.");
+    }
+
+    await tx.payment.create({
+      data: {
+        billId: bill.id,
+        amount,
+        method,
+        transactionReference,
+        note,
+        paidAt,
+      },
+    });
+
+    await updateBillPaymentSummary(bill.id, owner.id, tx);
   });
-
-  if (!bill) {
-    throw new Error("Bill not found.");
-  }
-
-  if (amount > bill.dueAmount) {
-    throw new Error("Payment cannot exceed due amount.");
-  }
-
-  await prisma.payment.create({
-    data: {
-      billId,
-      amount,
-      method,
-      transactionReference,
-      note,
-      paidAt,
-    },
-  });
-
-  await updateBillPaymentSummary(billId);
 
   revalidateBillingViews();
 }
@@ -592,8 +648,19 @@ export async function getPayments(filters?: {
   from?: Date;
   to?: Date;
 }) {
+  const owner = await requireOwner();
+
   return prisma.payment.findMany({
     where: {
+      bill: {
+        tenant: {
+          rentalUnit: {
+            property: {
+              ownerId: owner.id,
+            },
+          },
+        },
+      },
       method:
         filters?.method && filters.method !== "ALL"
           ? filters.method
@@ -628,9 +695,12 @@ export async function getPayments(filters?: {
 }
 
 export async function getPropertyReadingOptions() {
+  const owner = await requireOwner();
+
   return prisma.property.findMany({
     where: {
       isArchived: false,
+      ownerId: owner.id,
     },
     include: {
       readings: {
@@ -647,7 +717,14 @@ export async function getPropertyReadingOptions() {
 }
 
 export async function getPropertyReadings() {
+  const owner = await requireOwner();
+
   return prisma.propertyMonthlyReading.findMany({
+    where: {
+      property: {
+        ownerId: owner.id,
+      },
+    },
     include: {
       property: true,
       bills: {
@@ -676,6 +753,7 @@ export async function getPropertyReadings() {
 export async function upsertPropertyMonthlyReading(
   formData: FormData
 ) {
+  const owner = await requireOwner();
   const id = formData.get("id")?.toString();
   const propertyId =
     formData.get("propertyId")?.toString() || "";
@@ -715,6 +793,21 @@ export async function upsertPropertyMonthlyReading(
 
   if (!propertyId || !month) {
     throw new Error("Property and month are required.");
+  }
+
+  const property = await prisma.property.findFirst({
+    where: {
+      id: propertyId,
+      ownerId: owner.id,
+      isArchived: false,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    throw new Error("Property not found.");
   }
 
   const numbers = [
@@ -757,7 +850,7 @@ export async function upsertPropertyMonthlyReading(
               not: id,
             }
           : undefined,
-        propertyId,
+        propertyId: property.id,
         month,
       },
     });
@@ -769,12 +862,28 @@ export async function upsertPropertyMonthlyReading(
   }
 
   if (id) {
-    await prisma.propertyMonthlyReading.update({
+    const reading = await prisma.propertyMonthlyReading.findFirst({
       where: {
         id,
+        property: {
+          ownerId: owner.id,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!reading) {
+      throw new Error("Reading not found.");
+    }
+
+    await prisma.propertyMonthlyReading.update({
+      where: {
+        id: reading.id,
       },
       data: {
-        propertyId,
+        propertyId: property.id,
         month,
         governmentPreviousReading,
         governmentCurrentReading,
@@ -789,7 +898,7 @@ export async function upsertPropertyMonthlyReading(
   } else {
     await prisma.propertyMonthlyReading.create({
       data: {
-        propertyId,
+        propertyId: property.id,
         month,
         governmentPreviousReading,
         governmentCurrentReading,
@@ -807,37 +916,71 @@ export async function upsertPropertyMonthlyReading(
 }
 
 export async function deletePayment(formData: FormData) {
+  const owner = await requireOwner();
   const paymentId = String(formData.get("paymentId") ?? "");
 
   if (!paymentId) {
     throw new Error("Payment is required.");
   }
 
-  const payment = await prisma.payment.findUnique({
-    where: {
-      id: paymentId,
-    },
+  await prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.findFirst({
+      where: {
+        id: paymentId,
+        bill: {
+          tenant: {
+            rentalUnit: {
+              property: {
+                ownerId: owner.id,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new Error("Payment not found.");
+    }
+
+    await tx.payment.delete({
+      where: {
+        id: payment.id,
+      },
+    });
+
+    await updateBillPaymentSummary(payment.billId, owner.id, tx);
   });
-
-  if (!payment) {
-    throw new Error("Payment not found.");
-  }
-
-  await prisma.payment.delete({
-    where: {
-      id: paymentId,
-    },
-  });
-
-  await updateBillPaymentSummary(payment.billId);
 
   revalidateBillingViews();
 }
 
 export async function deleteBill(id: string) {
-  await prisma.bill.delete({
+  const owner = await requireOwner();
+
+  const bill = await prisma.bill.findFirst({
     where: {
       id,
+      tenant: {
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!bill) {
+    throw new Error("Bill not found.");
+  }
+
+  await prisma.bill.delete({
+    where: {
+      id: bill.id,
     },
   });
 

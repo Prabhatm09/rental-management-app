@@ -1,14 +1,22 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { requireOwner } from "@/lib/owner";
 
 export async function getPreviousReading(
   tenantId: string,
   month: Date
 ) {
-  const tenant = await prisma.tenant.findUnique({
+  const owner = await requireOwner();
+
+  const tenant = await prisma.tenant.findFirst({
     where: {
       id: tenantId,
+      rentalUnit: {
+        property: {
+          ownerId: owner.id,
+        },
+      },
     },
     include: {
       rentalUnit: {
@@ -26,6 +34,13 @@ export async function getPreviousReading(
       tenantId,
       month: {
         lt: month,
+      },
+      tenant: {
+        rentalUnit: {
+          property: {
+            ownerId: owner.id,
+          },
+        },
       },
     },
     orderBy: {
@@ -54,6 +69,9 @@ export async function getPreviousReading(
       isActive: true,
       rentalUnit: {
         propertyId: tenant.rentalUnit.propertyId,
+        property: {
+          ownerId: owner.id,
+        },
         participatesInMotor: true,
       },
     },
