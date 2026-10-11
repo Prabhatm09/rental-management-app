@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import BillForm from "./BillForm";
 import GlassButton from "@/components/ui/GlassButton";
@@ -10,6 +11,7 @@ import {
   Building2,
   Gauge,
   IndianRupee,
+  Pencil,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -47,10 +49,14 @@ type PropertyReadingOption = {
 type PropertyReading = {
   id: string;
   month: Date;
+  propertyId: string;
+  governmentPreviousReading: number;
+  governmentCurrentReading: number;
+  governmentBillAmount: number;
+  governmentOutstanding: number;
   motorPreviousReading: number;
   motorCurrentReading: number;
   motorUnits: number;
-  governmentBillAmount: number;
   property: {
     name: string;
   };
@@ -79,6 +85,19 @@ export default function BillSection({
   const [showForm, setShowForm] = useState(false);
   const [showReadingForm, setShowReadingForm] =
     useState(false);
+  const [editingReading, setEditingReading] =
+    useState<PropertyReading | null>(null);
+  const router = useRouter();
+
+  function closeReadingForm() {
+    setShowReadingForm(false);
+    setEditingReading(null);
+  }
+
+  function handleReadingSuccess() {
+    closeReadingForm();
+    router.refresh();
+  }
 
   return (
     <div className="space-y-6">
@@ -175,17 +194,31 @@ export default function BillSection({
                     value={`₹${reading.governmentBillAmount}`}
                     icon={<IndianRupee className="size-4" />}
                   />
-                  <div
-                    className={`rounded-[12px] px-3 py-2 text-sm font-semibold ${
-                      motorAdjustmentTotal === 0
-                        ? "bg-[var(--surface-soft)] text-[var(--muted)]"
-                        : "bg-amber-500/10 text-[var(--warning)]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <SlidersHorizontal className="size-4" />
-                      Adjustment {motorAdjustmentTotal}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`min-w-0 flex-1 rounded-[12px] px-3 py-2 text-sm font-semibold ${
+                        motorAdjustmentTotal === 0
+                          ? "bg-[var(--surface-soft)] text-[var(--muted)]"
+                          : "bg-amber-500/10 text-[var(--warning)]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SlidersHorizontal className="size-4" />
+                        Adjustment {motorAdjustmentTotal}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingReading(reading);
+                        setShowReadingForm(true);
+                      }}
+                      aria-label={`Edit ${reading.property.name} motor reading`}
+                      title="Edit reading"
+                      className="grid size-10 shrink-0 place-items-center rounded-[12px] border border-[var(--line)] bg-[var(--surface-strong)] text-[var(--accent-strong)] transition hover:border-[var(--accent)] hover:bg-[var(--surface-soft)]"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
                   </div>
                 </article>
               );
@@ -210,13 +243,15 @@ export default function BillSection({
 
       <GlassModal
         open={showReadingForm}
-        title="Monthly Motor Reading"
-        onClose={() => setShowReadingForm(false)}
+        title={editingReading ? "Edit Motor Reading" : "Monthly Motor Reading"}
+        onClose={closeReadingForm}
       >
         <PropertyReadingForm
+          key={editingReading?.id ?? "new-reading"}
           properties={properties}
-          onSuccess={() => setShowReadingForm(false)}
-          onCancel={() => setShowReadingForm(false)}
+          reading={editingReading}
+          onSuccess={handleReadingSuccess}
+          onCancel={closeReadingForm}
         />
       </GlassModal>
     </div>

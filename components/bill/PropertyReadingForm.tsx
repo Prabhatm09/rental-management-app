@@ -19,19 +19,37 @@ type Property = {
 
 type Props = {
   properties: Property[];
+  reading?: {
+    id: string;
+    propertyId: string;
+    month: Date;
+    governmentPreviousReading: number;
+    governmentCurrentReading: number;
+    governmentBillAmount: number;
+    governmentOutstanding: number;
+    motorPreviousReading: number;
+    motorCurrentReading: number;
+  } | null;
   onSuccess?: () => void;
   onCancel?: () => void;
 };
 
 export default function PropertyReadingForm({
   properties,
+  reading,
   onSuccess,
   onCancel,
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [propertyId, setPropertyId] = useState("");
-  const [motorPrevious, setMotorPrevious] = useState(0);
-  const [motorCurrent, setMotorCurrent] = useState(0);
+  const [propertyId, setPropertyId] = useState(
+    reading?.propertyId ?? ""
+  );
+  const [motorPrevious, setMotorPrevious] = useState(
+    reading?.motorPreviousReading ?? 0
+  );
+  const [motorCurrent, setMotorCurrent] = useState(
+    reading?.motorCurrentReading ?? 0
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -67,6 +85,7 @@ export default function PropertyReadingForm({
       action={action}
       className="space-y-5"
     >
+      {reading && <input type="hidden" name="id" value={reading.id} />}
       <fieldset
         disabled={pending}
         className="space-y-5 disabled:pointer-events-none disabled:opacity-60"
@@ -121,6 +140,13 @@ export default function PropertyReadingForm({
               type="month"
               name="month"
               required
+              defaultValue={
+                reading
+                  ? `${new Date(reading.month).getFullYear()}-${String(
+                      new Date(reading.month).getMonth() + 1
+                    ).padStart(2, "0")}`
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -138,17 +164,17 @@ export default function PropertyReadingForm({
         <input
           type="hidden"
           name="governmentPreviousReading"
-          value="0"
+          value={reading?.governmentPreviousReading ?? 0}
         />
         <input
           type="hidden"
           name="governmentCurrentReading"
-          value="0"
+          value={reading?.governmentCurrentReading ?? 0}
         />
         <input
           type="hidden"
           name="governmentOutstanding"
-          value="0"
+          value={reading?.governmentOutstanding ?? 0}
         />
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -190,7 +216,7 @@ export default function PropertyReadingForm({
             type="number"
             name="governmentBillAmount"
             min={0}
-            defaultValue={0}
+            defaultValue={reading?.governmentBillAmount ?? 0}
           />
         </div>
 
